@@ -1,0 +1,409 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{% from "partials/bits.html" import chain_banner %}
+
+{% block head_scripts %}
+<script defer src="{{ url_for('static', path='js/tx.js') }}"></script>
+{% endblock %}
+
+{% block title %}Buat Batch · EHR Traceability{% endblock %}
+{% block heading %}Buat Batch{% endblock %}
+
+{% block content %}
+<div x-data="createBatchForm">
+  <div class="page-head">
+    <div>
+      <a class="back-link" href="/rekam-medis">{{ icon('folder', 14) }} Daftar batch</a>
+      <h2>Buat Batch Rekam Medis</h2>
+      <p>
+        Batch baru di-mint sebagai NFT soulbound ke wallet pasien. Hanya
+        wallet berperan <strong>RESEPSIONIS</strong> yang bisa mengirim
+        transaksi ini.
+      </p>
+    </div>
+    <span class="chip">{{ total | fmt_number }} batch saat ini</span>
+  </div>
+
+  {{ chain_banner(health, contract_address) }}
+
+  {% if not doctors_ok %}
+  <div class="banner" data-tone="warning" role="status">
+    <span class="banner-icon">{{ icon('alert', 18) }}</span>
+    <div>
+      <h3>Belum ada dokter terdaftar</h3>
+      <p>
+        Dropdown dokter diambil dari <code>getDoctors()</code>. Daftarkan dokter
+        dulu lewat akun admin: <code>setRole(dokter, 2)</code>, atau jalankan
+        <code>npx hardhat run scripts/seed-demo.js --network localhost</code>.
+      </p>
+    </div>
+  </div>
+  {% endif %}
+
+  {# --- gerbang peran: MetaMask tidak ada / belum konek / bukan resepsionis --- #}
+  <template x-if="gate() === 'no-provider'">
+    <div class="banner" data-tone="warning" role="status">
+      <span class="banner-icon">{{ icon('wallet', 18) }}</span>
+      <div>
+        <h3>MetaMask tidak terdeteksi</h3>
+        <p>
+          Transaksi harus ditandatangani wallet, jadi form ini butuh ekstensi
+          MetaMask. Pasang dulu, lalu muat ulang halaman ini.
+        </p>
+      </div>
+    </div>
+  </template>
+
+  <template x-if="gate() === 'no-wallet'">
+    <div class="banner" data-tone="info" role="status">
+      <span class="banner-icon">{{ icon('wallet', 18) }}</span>
+      <div>
+        <h3>Wallet belum tersambung</h3>
+        <p>
+          Sambungkan wallet berperan resepsionis untuk mengaktifkan form ini.
+          <button type="button" class="btn btn-primary btn-sm" @click="connect()">
+            Sambungkan wallet
+          </button>
+        </p>
+      </div>
+    </div>
+  </template>
+
+  <template x-if="gate() === 'blocked'">
+    <div class="card">
+      <div class="empty-state">
+        <strong>Hanya resepsionis yang bisa mendaftarkan pasien</strong>
+        <span>
+          Wallet <span class="mono" x-text="short(address())"></span> berperan
+          <strong x-text="role ? role.label : 'tanpa peran'"></strong>. Kontrak
+          menolak <span class="mono">createBatch</span> dari peran lain, jadi
+          form ini tidak ditampilkan.
+        </span>
+        <p style="margin: 10px 0 0">
+          <a class="btn btn-ghost btn-sm" href="/rekam-medis">
+            {{ icon('folder', 16) }} Kembali ke daftar batch
+          </a>
+        </p>
+      </div>
+    </div>
+  </template>
+
+  <div
+    class="form-layout"
+    x-show="gate() !== 'blocked' && gate() !== 'no-provider'"
+  >
+    <form id="batch-form" class="card" novalidate @submit.prevent="submit()">
+      <div class="card-header">
+        <div>
+          <h2 class="card-title">Data pasien</h2>
+          <p class="hint" style="margin: 2px 0 0">
+            Field bertanda <span class="req">*</span> wajib diisi.
+          </p>
+        </div>
+      </div>
+
+      <div class="card-body form-body">
+        {# Ringkasan error — fokus pindah ke sini supaya pembaca layar
+           langsung tahu ada berapa masalah. #}
+        <div
+          class="error-summary"
+          role="alert"
+          tabindex="-1"
+          x-ref="summary"
+          x-show="banner"
+        >
+          <p class="error-summary-title" x-text="banner"></p>
+          <ul class="error-summary-list" x-show="Object.keys(errors).length">
+            <template x-for="(message, field) in errors" :key="field">
+              <li x-text="message"></li>
+            </template>
+          </ul>
+        </div>
+
+        <div class="form-grid">
+          <div class="field">
+            <label class="label" for="patientId">
+              ID Pasien <span class="req" aria-hidden="true">*</span>
+              <span class="sr-only">(wajib)</span>
+            </label>
+            <input
+              class="input"
+              id="patientId"
+              name="patientId"
+              type="text"
+              maxlength="32"
+              autocomplete="off"
+              placeholder="P-001"
+              x-model="patientId"
+              :aria-invalid="errors.patientId ? 'true' : 'false'"
+              aria-describedby="patientId-hint patientId-error"
+            />
+            <p class="hint" id="patientId-hint">
+              3–32 karakter: huruf, angka, atau strip.
+            </p>
+            <p class="field-error" id="patientId-error" x-show="errors.patientId" x-text="errors.patientId"></p>
+          </div>
+
+          <div class="field">
+            <label class="label" for="patientName">
+              Nama Pasien <span class="req" aria-hidden="true">*</span>
+              <span class="sr-only">(wajib)</span>
+            </label>
+            <input
+              class="input"
+              id="patientName"
+              name="patientName"
+              type="text"
+              maxlength="64"
+              autocomplete="off"
+              placeholder="Budi Santoso"
+              x-model="patientName"
+              :aria-invalid="errors.patientName ? 'true' : 'false'"
+              aria-describedby="patientName-error"
+            />
+            <p class="field-error" id="patientName-error" x-show="errors.patientName" x-text="errors.patientName"></p>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="label" for="complaint">
+            Keluhan <span class="req" aria-hidden="true">*</span>
+            <span class="sr-only">(wajib)</span>
+          </label>
+          <textarea
+            class="input input-area"
+            id="complaint"
+            name="complaint"
+            rows="3"
+            maxlength="280"
+            placeholder="Demam tiga hari disertai pusing"
+            x-model="complaint"
+            :aria-invalid="errors.complaint ? 'true' : 'false'"
+            aria-describedby="complaint-count complaint-error"
+          ></textarea>
+          <div class="field-foot">
+            <p class="field-error" id="complaint-error" x-show="errors.complaint" x-text="errors.complaint"></p>
+            <p class="counter" id="complaint-count">
+              <span x-text="complaint.length"></span>/280
+            </p>
+          </div>
+        </div>
+
+        <div class="form-grid">
+          <div class="field">
+            <label class="label" for="doctor">
+              Dokter penanggung jawab <span class="req" aria-hidden="true">*</span>
+              <span class="sr-only">(wajib)</span>
+            </label>
+            <select
+              class="input"
+              id="doctor"
+              name="doctor"
+              x-model="doctor"
+              :aria-invalid="errors.doctor ? 'true' : 'false'"
+              aria-describedby="doctor-hint doctor-error"
+              {% if not doctors_ok %}disabled{% endif %}
+            >
+              <option value="">Pilih dokter…</option>
+              {% for address in doctors %}
+              <option value="{{ address }}" title="{{ address }}">
+                {{ address | short_addr(10, 6) }}
+              </option>
+              {% endfor %}
+            </select>
+            <p class="hint" id="doctor-hint">Daftar dari <span class="mono">getDoctors()</span>.</p>
+            <p class="field-error" id="doctor-error" x-show="errors.doctor" x-text="errors.doctor"></p>
+          </div>
+
+          <div class="field">
+            <label class="label" for="patient">
+              Wallet pasien <span class="req" aria-hidden="true">*</span>
+              <span class="sr-only">(wajib)</span>
+            </label>
+            <input
+              class="input mono"
+              id="patient"
+              name="patient"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="0x…"
+              x-model="patient"
+              :aria-invalid="errors.patient ? 'true' : 'false'"
+              aria-describedby="patient-hint patient-error"
+            />
+            <p class="hint" id="patient-hint">
+              NFT dimint ke alamat ini — bukan wallet kamu.
+            </p>
+            <p class="field-error" id="patient-error" x-show="errors.patient" x-text="errors.patient"></p>
+          </div>
+        </div>
+
+        <div class="field">
+          <button
+            type="button"
+            class="link-toggle"
+            :aria-expanded="showMeta ? 'true' : 'false'"
+            aria-controls="metadata-group"
+            @click="showMeta = !showMeta"
+          >
+            <span x-text="showMeta ? 'Sembunyikan metadata kustom' : 'Metadata NFT (lanjutan)'"></span>
+          </button>
+          <div id="metadata-group" x-show="showMeta">
+            <input
+              class="input mono"
+              id="metadata"
+              name="metadata"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="ipfs://… atau https://…"
+              x-model="metadata"
+              :aria-invalid="errors.metadata ? 'true' : 'false'"
+              aria-describedby="metadata-hint metadata-error"
+            />
+            <p class="hint" id="metadata-hint">
+              Kosongkan untuk memakai metadata otomatis
+              (<span class="mono">data:application/json;base64,…</span>) tanpa
+              nama/ID pasien.
+            </p>
+            <p class="field-error" id="metadata-error" x-show="errors.metadata" x-text="errors.metadata"></p>
+          </div>
+        </div>
+      </div>
+    </form>
+
+    <aside class="card form-summary">
+      <div class="card-header">
+        <h2 class="card-title">Ringkasan</h2>
+      </div>
+      <div class="card-body stack">
+        <dl class="def-list def-list--tight">
+          <dt>Pasien</dt>
+          <dd x-text="patientName || '—'"></dd>
+          <dt>ID</dt>
+          <dd class="mono" x-text="patientId || '—'"></dd>
+          <dt>Keluhan</dt>
+          <dd x-text="complaint || '—'"></dd>
+          <dt>Dokter</dt>
+          <dd class="mono" x-text="doctor ? short(doctor) : '—'"></dd>
+          <dt>Wallet pasien</dt>
+          <dd class="mono" x-text="patient ? short(patient) : '—'"></dd>
+          <dt>Pengirim</dt>
+          <dd class="mono" x-text="address() ? short(address()) : '—'"></dd>
+          <dt>Biaya</dt>
+          <dd>Gas lokal (gratis)</dd>
+        </dl>
+
+        <button
+          class="btn btn-primary"
+          type="submit"
+          form="batch-form"
+          x-ref="submitBtn"
+          :disabled="busy() || gate() !== 'open'"
+        >
+          {{ icon('send', 16) }}
+          <span x-text="busy() ? 'Memproses…' : 'Siapkan transaksi'"></span>
+        </button>
+
+        <p class="hint" x-show="gate() === 'no-wallet'">
+          Sambungkan wallet dulu lewat tombol di kanan atas.
+        </p>
+        <p class="hint" x-show="gate() === 'checking'">Memeriksa peran wallet…</p>
+        <p class="hint">
+          Server memvalidasi dan menjalankan dry-run dulu; tanda tangan tetap di
+          MetaMask.
+        </p>
+      </div>
+    </aside>
+  </div>
+
+  {# --- dialog konfirmasi (READY → SIGNING) --- #}
+  <template x-if="confirmOpen">
+    <div class="dialog-backdrop" @click.self="closeConfirm()" @keydown.escape.window="closeConfirm()">
+      <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+        <h2 class="dialog-title" id="confirm-title">Konfirmasi transaksi</h2>
+        <p class="hint" style="margin: 4px 0 12px">
+          Dry-run lolos. Periksa ringkasan di bawah, lalu tanda tangan di
+          MetaMask.
+        </p>
+
+        <dl class="def-list def-list--tight">
+          <dt>Pasien</dt>
+          <dd x-text="patientName"></dd>
+          <dt>ID</dt>
+          <dd class="mono" x-text="patientId"></dd>
+          <dt>Dokter</dt>
+          <dd class="mono" x-text="short(doctor)"></dd>
+          <dt>Wallet pasien</dt>
+          <dd class="mono" x-text="short(patient)"></dd>
+          <dt>Fungsi</dt>
+          <dd class="mono">createBatch</dd>
+          <dt>Token ID</dt>
+          <dd class="mono" x-text="tx ? '#' + tx.predictedTokenId : '—'"></dd>
+        </dl>
+
+        <p class="hint" style="margin: 12px 0 0">
+          Token ID di atas hasil simulasi — nomor final dibaca dari receipt.
+        </p>
+
+        <div class="dialog-actions">
+          <button type="button" class="btn btn-ghost" @click="closeConfirm()">
+            Batal
+          </button>
+          <button type="button" class="btn btn-primary" x-ref="confirmBtn" @click="send()">
+            {{ icon('send', 16) }} Buka MetaMask
+          </button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  {# --- panel status transaksi --- #}
+  <template x-if="panelVisible()">
+    <section
+      class="card tx-panel"
+      x-ref="panel"
+      :data-tone="panelTone()"
+      role="status"
+      aria-live="polite"
+    >
+      <div class="card-body stack">
+        <p class="tx-headline" x-text="statusText()"></p>
+
+        <p class="mono tx-hash" x-show="hash" x-text="hash"></p>
+
+        <p class="hint" x-show="phase === 'pending'" style="margin: 0">
+          Transaksi sudah masuk ke node lokal. Biasanya selesai dalam 1–2 detik.
+        </p>
+
+        <div x-show="phase === 'success'" class="tx-actions">
+          <p class="hint" style="margin: 0" x-show="lastTokenId">
+            Token ID baru: <strong class="mono" x-text="'#' + lastTokenId"></strong>
+          </p>
+          <a
+            class="btn btn-primary btn-sm"
+            x-show="lastTokenId"
+            :href="'/rekam-medis/' + lastTokenId"
+          >
+            {{ icon('arrow-right', 14) }} Lihat detail batch
+          </a>
+          <button type="button" class="btn btn-ghost btn-sm" @click="reset()">
+            Buat batch lain
+          </button>
+        </div>
+
+        <div
+          x-show="['failed', 'rejected', 'timeout', 'error'].includes(phase)"
+          class="tx-actions"
+        >
+          <button type="button" class="btn btn-ghost btn-sm" @click="retry()">
+            {{ icon('refresh', 14) }} Kirim ulang
+          </button>
+          <a class="btn btn-ghost btn-sm" href="/rekam-medis">Cek daftar batch</a>
+        </div>
+      </div>
+    </section>
+  </template>
+</div>
+{% endblock %}

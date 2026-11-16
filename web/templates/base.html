@@ -20,6 +20,7 @@
     />
     <!-- wallet.js didaftarkan SEBELUM Alpine: Alpine memulai komponennya
          lewat microtask, jadi listener `alpine:init` harus sudah terpasang. -->
+    {% block head_scripts %}{% endblock %}
     <script defer src="{{ url_for('static', path='js/wallet.js') }}"></script>
     <script
       defer

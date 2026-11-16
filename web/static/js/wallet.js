@@ -6,6 +6,17 @@
  * menyentuh server maupun file ini.
  */
 document.addEventListener("alpine:init", () => {
+  // Store bersama: halaman lain (mis. form transaksi) butuh alamat & chain
+  // tanpa harus menyalin logika MetaMask. walletBar yang menulis, yang lain
+  // hanya membaca.
+  Alpine.store("wallet", {
+    address: null,
+    chainId: null,
+    balance: null,
+    hasProvider: false,
+    expectedChainId: 0,
+  });
+
   Alpine.data("walletBar", () => ({
     address: null,
     chainId: null,
@@ -18,6 +29,7 @@ document.addEventListener("alpine:init", () => {
       const root = document.documentElement;
       this.expectedChainId = Number(root.dataset.expectedChainId || 0);
       this.hasProvider = Boolean(window.ethereum);
+      this.sync();
 
       if (!this.hasProvider) return;
 
@@ -32,6 +44,7 @@ document.addEventListener("alpine:init", () => {
 
       window.ethereum.on?.("chainChanged", (chainHex) => {
         this.chainId = Number(chainHex);
+        this.sync();
         this.loadBalance();
       });
 
@@ -68,6 +81,7 @@ document.addEventListener("alpine:init", () => {
       if (!address) {
         this.chainId = null;
         this.balance = null;
+        this.sync();
         return;
       }
 
@@ -76,6 +90,7 @@ document.addEventListener("alpine:init", () => {
           method: "eth_chainId",
         });
         this.chainId = Number(chainHex);
+        this.sync();
         await this.loadBalance();
       } catch (error) {
         console.warn("Gagal membaca jaringan wallet:", error);
@@ -85,6 +100,7 @@ document.addEventListener("alpine:init", () => {
     async loadBalance() {
       if (!this.address || !this.hasProvider) {
         this.balance = null;
+        this.sync();
         return;
       }
 
@@ -100,6 +116,17 @@ document.addEventListener("alpine:init", () => {
       } catch (error) {
         this.balance = null;
       }
+      this.sync();
+    },
+
+    // walletBar tetap pemilik state; store hanya cermin untuk komponen lain.
+    sync() {
+      const store = Alpine.store("wallet");
+      store.address = this.address;
+      store.chainId = this.chainId;
+      store.balance = this.balance;
+      store.hasProvider = this.hasProvider;
+      store.expectedChainId = this.expectedChainId;
     },
 
     wrongNetwork() {

@@ -1,7 +1,7 @@
 ---
 type: design-doc
 project: EHR Traceability (Praktikum Blockchain Pertemuan 11–12)
-status: fase 1–2 selesai (status jaringan + dashboard + daftar batch), fase 3–5 jalan
+status: fase 1–3 selesai (status jaringan, dashboard, daftar batch, form Buat Batch), fase 4–5 jalan
 last_updated: 2026-11-16
 ---
 
@@ -9,9 +9,10 @@ last_updated: 2026-11-16
 
 Dokumen ini rancangan UI untuk tugas **Pertemuan 11–12: Implementasi UI**.
 Isinya keputusan desain, struktur halaman, pemetaan ke smart contract, dan
-rencana kerja. Status: **fase 1–2 sudah jalan** (kerangka FastAPI + layout +
-`/api/health`, lalu dashboard penuh + daftar batch read-only), fase 3–5
-menyusul. `contracts/*.sol` tidak disentuh lagi
+rencana kerja. Status: **fase 1–3 sudah jalan** (kerangka FastAPI + layout +
+`/api/health`, dashboard + daftar batch read-only, lalu form Buat Batch yang
+mengirim transaksi lewat MetaMask), fase 4–5 menyusul. `contracts/*.sol`
+tidak disentuh lagi
 sejak rancangan kontrak diterapkan.
 
 ---
@@ -647,7 +648,7 @@ Cek sebelum bilang selesai:
 | **0b** ✅ | Seed peran di `deploy.js`, deploy + `seed-demo.js` | 4 batch demo, 4 akun berperan benar |
 | **1** ✅ | Scaffold FastAPI, `chain.py`, base layout, token, `/api/health` | dashboard menampilkan chain 31337, kontrak, `totalSupply`, dokter; RPC mati → banner |
 | **2** ✅ | Dashboard + Daftar Batch (read-only) | data asli dari kontrak tampil, filter jalan |
-| 3 | Form Buat Batch + `tx.py` + MetaMask + tx panel | satu transaksi `createBatch` sukses dari UI |
+| 3 ✅ | Form Buat Batch + `tx.py` + MetaMask + tx panel | satu transaksi `createBatch` sukses dari UI |
 | 4 | Detail + majukan status + tindakan + consent | alur 3 peran jalan dari UI |
 
 Catatan fase 2: halaman detail `/rekam-medis/{token_id}` ikut dibuat dalam
@@ -655,6 +656,27 @@ versi **read-only** (stepper, data medis, NFT & penugasan, riwayat) supaya
 tautan dari daftar tidak 404. Tombol aksi tulis tetap milik fase 4.
 Filter disimpan di query string (`q`, `status`, `doctor`, `mine`, `wallet`,
 `view`) supaya URL bisa dibagikan dan tahan refresh.
+
+Catatan fase 3:
+- Modul baru: `web/validate.py` (aturan form, satu sumber kebenaran — JS
+  tidak menduplikasi regex) dan `web/tx.py` (validasi → dry-run `.call({from})`
+  → calldata; plus pembacaan receipt + parsing event `BatchCreated`).
+- Endpoint: `POST /api/tx/build`, `GET /api/tx/{hash}`, `GET /api/role`.
+  Error validasi balik sebagai `400 {error, fields}` supaya pesan inline
+  berasal dari server, bukan dari dua tempat.
+- Gerbang peran: halaman membaca `getRole(alamat)` dan hanya menampilkan form
+  untuk `RESEPSIONIST`; peran lain dapat empty-state penjelas. Kalau wallet
+  belum konek atau MetaMask tidak ada, alasannya ditulis eksplisit.
+- Metadata NFT default `data:application/json;base64,…` tanpa nama/ID pasien
+  (jangan menambah PII baru ke chain).
+- `chain.refresh()` sekarang juga membaca ulang `deployment.json` (cek mtime),
+  karena deploy ulang mengubah alamat kontrak — sebelumnya UI diam-diam
+  membaca kontrak lama.
+- Uji alur penuh di headless Chromium memakai **provider wallet tiruan** yang
+  meneruskan `eth_sendTransaction` ke node lokal (Chromium headless tidak
+  punya MetaMask): validasi kosong → 5 error, dialog konfirmasi, sukses
+  blok 48 gas 641.508 token #5, penolakan MetaMask (`4001`) → pesan
+  "Kamu membatalkan transaksi di MetaMask.", admin → empty-state peran.
 | 5 | Wallet + Hak Akses + responsif + README | semua halaman modul lengkap |
 
 Aturan: satu fase selesai & dites, baru lanjut. Jangan bangun semua

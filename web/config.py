@@ -76,3 +76,31 @@ def reload() -> None:
     """Lupakan cache file (dipakai setelah deploy ulang)."""
     load_deployment.cache_clear()
     load_abi.cache_clear()
+
+
+# mtime terakhir file yang dibaca. Deploy ulang menulis `deployment.json`,
+# dan alamat kontraknya ikut berubah — kalau cache tidak dibuang, UI akan
+# diam-diam membaca kontrak lama yang datanya beda.
+_file_stamps: dict[Path, float] = {}
+
+
+def _stamp(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def reload_if_changed() -> bool:
+    """Buang cache file kalau `deployment.json`/artifact berubah di disk."""
+    stamps = {
+        DEPLOYMENT_PATH: _stamp(DEPLOYMENT_PATH),
+        ABI_PATH: _stamp(ABI_PATH),
+    }
+    if stamps == _file_stamps:
+        return False
+
+    _file_stamps.clear()
+    _file_stamps.update(stamps)
+    reload()
+    return True

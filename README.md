@@ -93,9 +93,15 @@ sebagai penanda tangan transaksi. Semua aset pihak ketiga (Tailwind hasil
 build, Alpine, ethers, font) disimpan lokal, jadi demo tetap jalan tanpa
 internet.
 
-**Status:** tahap 1 selesai — kerangka aplikasi, layout, token warna, dan
-`/api/health`. Halaman lain masih placeholder dengan URL asli. Rencana per
-tahap ada di `docs/Rancangan UI - EHR Traceability.md` §11.
+**Status:** tahap 1–3 selesai — kerangka + `/api/health`, dashboard dan
+daftar batch read-only, dan form **Buat Batch** yang mengirim transaksi lewat
+MetaMask (validasi + dry-run di server, tanda tangan di wallet). Halaman
+Wallet & Hak Akses masih placeholder dengan URL asli. Rencana per tahap ada
+di `docs/Rancangan UI - EHR Traceability.md` §11.
+
+Syarat demo form Buat Batch: wallet MetaMask berperan **resepsionis** di
+chain 31337 (akun #1 hasil `scripts/deploy.js`). Server tidak pernah memegang
+private key — ia hanya menyiapkan `to` + `data`.
 
 ### Menjalankan
 
@@ -125,6 +131,29 @@ Variabel lingkungan yang dibaca aplikasi:
 | `EHR_RPC_URL` | `http://127.0.0.1:8545` | alamat RPC Hardhat |
 | `EHR_CACHE_TTL` | `15` | umur cache pembacaan chain (detik) |
 | `EHR_RPC_TIMEOUT` | `3` | timeout per request RPC (detik) |
+
+### Endpoint API internal
+
+| Endpoint | Guna |
+|---|---|
+| `GET /api/health` | status RPC, chain, blok, kontrak, `totalSupply` |
+| `GET /api/role?address=0x…` | peran satu alamat dari `getRole()` |
+| `POST /api/tx/build` | validasi + dry-run + calldata siap tanda tangan |
+| `GET /api/tx/{hash}` | status receipt: `pending` / `success` / `failed` |
+| `GET /api/docs` | dokumentasi otomatis FastAPI |
+
+Contoh `POST /api/tx/build`:
+
+```json
+{ "action": "createBatch", "from": "0x7099…", "args": {
+    "patientId": "P-001", "patientName": "Budi Santoso",
+    "complaint": "demam 3 hari", "patient": "0x15d3…",
+    "doctor": "0x3C44…", "metadata": "" } }
+```
+
+Balasannya `{ "to": …, "data": "0x…", "label": …, "predictedTokenId": 5 }`.
+Kalau ditolak: `400` + `{ "error": "Hanya resepsionis", "fields": {} }` —
+alasan revert kontrak ditampilkan apa adanya.
 
 ### Mengubah CSS
 

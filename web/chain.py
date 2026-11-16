@@ -46,8 +46,13 @@ def _cached(key: str, factory: Callable[[], Any], ttl: float | None = None) -> A
 
 
 def refresh() -> None:
-    """Kosongkan cache — dipakai tombol "Muat ulang data"."""
+    """Kosongkan cache — dipakai tombol "Muat ulang data".
+
+    Sekalian membaca ulang `deployment.json`: setiap deploy ulang mengubah
+    alamat kontrak, dan tanpa ini UI tetap menunjuk kontrak yang lama.
+    """
     _cache.clear()
+    config.reload_if_changed()
 
 
 def get_contract():
@@ -82,6 +87,10 @@ def health() -> dict:
 
 
 def _probe_health() -> dict:
+    # Deploy ulang menulis deployment.json; cek mtime supaya alamat baru
+    # terpakai tanpa harus restart server.
+    config.reload_if_changed()
+
     info: dict[str, Any] = {
         "rpc": False,
         "chainId": None,
@@ -221,6 +230,32 @@ def doctors() -> list[str]:
         return _cached("doctors", lambda: list(contract.functions.getDoctors().call()))
     except Exception:
         return []
+
+
+ROLE_NAMES = ["NONE", "RECEPTIONIST", "DOCTOR", "ADMIN"]
+
+
+def role_of(address: str) -> dict | None:
+    """Peran satu alamat menurut `getRole()`. None kalau alamat/RPC bermasalah.
+
+    Peran `NONE` bisa berarti pasien (pemilik NFT) — penyimpulan itu terjadi
+    di UI, bukan di sini, karena butuh `ownerOf()` per batch.
+    """
+    contract = get_contract()
+    if contract is None or not address:
+        return None
+
+    try:
+        checksum = Web3.to_checksum_address(address)
+        value = int(contract.functions.getRole(checksum).call())
+    except Exception:
+        return None
+
+    return {
+        "address": checksum,
+        "role": ROLE_NAMES[value] if 0 <= value < len(ROLE_NAMES) else "NONE",
+        "roleIndex": value,
+    }
 
 
 def chain_label(status: dict) -> str:

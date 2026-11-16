@@ -4,7 +4,7 @@ Jalankan dari root repo `Hardhat/`:
 
     uvicorn web.main:app --reload --port 8000
 
-Fase 2: dashboard penuh + daftar batch read-only. Form transaksi masih stub.
+Fase 3: form Buat Batch + transaksi lewat MetaMask. Halaman lain masih stub.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import chain, config, view
+from . import chain, config, tx, view
 
 app = FastAPI(
     title="EHR Traceability",
@@ -124,17 +124,6 @@ def dashboard(request: Request, refresh: int = 0):
 # Stub halaman yang dibangun di fase berikutnya. Satu sumber data supaya
 # sidebar, judul, dan isi placeholder tidak berbeda-beda.
 STUBS: dict[str, dict] = {
-    "/rekam-medis/baru": {
-        "heading": "Buat Batch",
-        "phase": 3,
-        "intro": "Form pendaftaran pasien baru dengan validasi dan pengiriman "
-        "transaksi lewat MetaMask.",
-        "items": [
-            "Validasi field wajib + dropdown dokter dari <code>getDoctors()</code>",
-            "Dry-run <code>.call()</code> sebelum tanda tangan transaksi",
-            "Panel status transaksi: menunggu, berhasil, gagal (revert kontrak)",
-        ],
-    },
     "/wallet": {
         "heading": "Wallet & Transaksi",
         "phase": 5,
@@ -237,8 +226,19 @@ def batch_detail(request: Request, token_id: int, refresh: int = 0):
 
 
 @app.get("/rekam-medis/baru", response_class=HTMLResponse)
-def batch_new(request: Request):
-    return _stub(request, "/rekam-medis/baru")
+def batch_new(request: Request, refresh: int = 0):
+    """Form input batch baru — pengirimnya MetaMask, bukan server."""
+    if refresh:
+        chain.refresh()
+
+    doctors = chain.doctors()
+    return _page(
+        request,
+        "batch_new.html",
+        doctors=doctors,
+        doctors_ok=bool(doctors),
+        total=len(chain.list_batches() or []),
+    )
 
 
 @app.get("/wallet", response_class=HTMLResponse)
@@ -280,6 +280,52 @@ def api_health(refresh: int = 0):
         payload["doctorCount"] = meta.get("doctorCount")
 
     return JSONResponse(payload)
+
+
+@app.get("/api/role")
+def api_role(address: str = ""):
+    """Peran satu alamat dari `getRole()` — dipakai untuk gerbang form."""
+    info = chain.role_of(address)
+    if info is None:
+        return JSONResponse(
+            {"error": "Alamat tidak valid atau kontrak belum bisa dibaca."},
+            status_code=400,
+        )
+
+    info["label"] = view.role_label(info["roleIndex"])
+    return JSONResponse(info)
+
+
+@app.post("/api/tx/build")
+async def api_tx_build(request: Request):
+    """Siapkan transaksi (validasi + dry-run). Tanda tangan tetap di wallet."""
+    try:
+        payload = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Body harus berupa JSON."}, status_code=400)
+
+    if not isinstance(payload, dict):
+        return JSONResponse({"error": "Body harus objek JSON."}, status_code=400)
+
+    try:
+        result = tx.build(payload)
+    except tx.TxError as exc:
+        return JSONResponse(
+            {"error": exc.message, "fields": exc.fields},
+            status_code=exc.status,
+        )
+
+    return JSONResponse(result)
+
+
+@app.get("/api/tx/{tx_hash}")
+def api_tx_status(tx_hash: str):
+    """Status receipt satu transaksi: pending / success / failed."""
+    try:
+        return JSONResponse(tx.tx_status(tx_hash))
+    except tx.TxError as exc:
+        return JSONResponse({"error": exc.message}, status_code=exc.status)
+
 
 
 # --------------------------------------------------------------------------
