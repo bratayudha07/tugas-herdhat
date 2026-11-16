@@ -492,6 +492,7 @@ chain tetap bisa melihatnya.
 | `confirm_dialog` | ringkasan sebelum kirim | fokus masuk ke dialog, Esc menutup, fokus balik |
 | `filter_pills` | filter status | `<a>` dengan URL asli, bukan JS-only |
 | `data_table` | tabel + wrapper scroll | `<caption>` + urutan kolom stabil |
+| `role_chip` | peran wallet saat ini | resolusi: `getRole` != NONE → peran itu; NONE tapi memiliki NFT → **PASIEN**; selain itu "tanpa peran" |
 
 ---
 
@@ -628,8 +629,8 @@ Cek sebelum bilang selesai:
 
 | Fase | Isi | Hasil yang bisa dicek |
 |---|---|---|
-| **0a** | Terapkan kontrak peran & consent (rancangan kontrak) + 20 test | `npx hardhat test` 20 lulus |
-| **0b** | Seed peran di `deploy.js`, deploy ulang, buat 1 batch contoh | 4 akun punya peran benar |
+| **0a** ✅ | Kontrak peran & consent + test | `npx hardhat test` 29 lulus |
+| **0b** ✅ | Seed peran di `deploy.js`, deploy + `seed-demo.js` | 4 batch demo, 4 akun berperan benar |
 | 1 | Scaffold FastAPI, `chain.py`, base layout, token, `/api/health` | halaman kosong tapi status jaringan benar |
 | 2 | Dashboard + Daftar Batch (read-only) | data asli dari kontrak tampil, filter jalan |
 | 3 | Form Buat Batch + `tx.py` + MetaMask + tx panel | satu transaksi `createBatch` sukses dari UI |

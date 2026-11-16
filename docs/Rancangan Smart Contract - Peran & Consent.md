@@ -1,15 +1,15 @@
 ---
 type: design-doc
 project: EHR Traceability (Praktikum Blockchain Pertemuan 11–12)
-status: rancangan — sudah diverifikasi kompilasi + 20 tes, BELUM diterapkan
+status: diterapkan 2026-11-16 — 29 test lulus, deploy + seed terverifikasi via Web3.py
 last_updated: 2026-11-16
 ---
 
 # Rancangan Smart Contract — Peran & Consent
 
 Dokumen ini rancangan perubahan `contracts/EHRTraceability.sol` yang sudah
-kamu setujui arahnya. **File `.sol` di repo belum disentuh.** Draft kode yang
-sudah lolos kompilasi dan 20 tes ada di:
+kamu setujui arahnya. **Status: sudah diterapkan** (lihat §9a). Draft kode +
+test aslinya tetap disimpan sebagai arsip di:
 
 - `docs/rancangan/EHRTraceability.sol.draft`
 - `docs/rancangan/ehr.test.js.draft`
@@ -17,6 +17,11 @@ sudah lolos kompilasi dan 20 tes ada di:
 Kalau kamu setuju dengan isi dokumen ini, eksekusinya tinggal menyalin draft
 ke `contracts/`, menambah seeding peran di `scripts/deploy.js`, lalu
 `npx hardhat compile && npx hardhat test`.
+
+**Status eksekusi:** sudah dijalankan. File yang berubah/baru:
+`contracts/EHRTraceability.sol`, `test/ehr.test.js`, `scripts/deploy.js`
+(seeding peran), `scripts/seed-demo.js` (data demo 4 batch),
+`deployment.json` (alamat + akun demo).
 
 ---
 
@@ -289,6 +294,42 @@ dicabut saat dokter diganti. Keduanya sudah diperbaiki di draft.
 
 ---
 
+## 9a. Hasil eksekusi (2026-11-16)
+
+1. `contracts/EHRTraceability.sol` diganti dengan draft yang sudah diuji.
+2. `test/ehr.test.js` terpasang → `npx hardhat test` = **29 lulus**
+   (20 test EHR + 9 test Lock bawaan).
+3. `scripts/deploy.js` memberi peran otomatis + menulis `demoAccounts`.
+4. `scripts/seed-demo.js` mengisi 4 batch contoh dengan tahap berbeda.
+5. Deploy + seed diuji di `npx hardhat node`, lalu dibaca ulang lewat
+   **Web3.py** (jalur yang nanti dipakai aplikasi web):
+
+```
+rpc: True | chain: 31337 | totalSupply: 4
+dokter terdaftar: 0x3C44…93BC, 0x90F7…b906
+admin        -> ADMIN
+receptionist -> RESEPSIONIS
+doctor       -> DOKTER
+doctor2      -> DOKTER
+patient      -> NONE        ← wajar, pasien bukan role
+
+#1 Budi Santoso  P-001  COMPLETED  consent=ya     riwayat=7
+#2 Sari Dewi     P-014  TREATED    consent=ya     riwayat=6
+#3 Agus Prakoso  P-009  EXAMINED   consent=ya     riwayat=4
+#4 Rina Marlina  P-021  CREATED    consent=belum  riwayat=1
+```
+
+**Temuan penting untuk UI:** akun pasien berperan `NONE` karena pasien bukan
+role. Jadi identitas harus disimpulkan: `getRole != NONE` → pakai peran itu;
+kalau `NONE` tapi `ownerOf` batch tertentu == wallet → tampilkan **PASIEN**;
+selain itu baru "tanpa peran". Jangan pakai `getRole` saja untuk menyimpulkan
+"akun tidak terdaftar".
+
+Node Hardhat **dimatikan** setelah verifikasi (state hilang). Untuk demo,
+jalankan ulang: `npx hardhat node` → `deploy.js` → `seed-demo.js`.
+
+---
+
 ## 10. Dampak ke rancangan UI
 
 | Halaman | Yang berubah |
@@ -299,7 +340,7 @@ dicabut saat dokter diganti. Keduanya sudah diperbaiki di draft.
 | `/rekam-medis/{id}` | aksi berubah per peran: dokter → majukan status + isi tindakan; pasien → tombol **Izinkan / Cabut izin dokter**; resepsionis → **Ganti dokter**. Tampilkan status consent |
 | `/wallet` | tampilkan **peran wallet** (`getRole`) di samping alamat |
 | `/hak-akses` | dari halaman baca jadi fungsional: daftar dokter terdaftar, siapa penanggung jawab tiap batch, consent aktif/tidak, aksi sesuai peran |
-| Semua | banner bila peran `NONE` (akun tidak terdaftar): "Akun ini tidak punya peran. Hubungi admin." |
+| Semua | identitas wallet: `getRole` != NONE → pakai peran itu; NONE tapi memiliki NFT → **PASIEN**; selain itu baru banner "Akun ini tidak punya peran." |
 
 **`app.py` lama akan rusak** setelah kontrak baru di-deploy (signature
 `createBatch` berubah, field struct bertambah). Itu wajar karena kita memang
@@ -333,27 +374,25 @@ jangan dihapus sebelum versi baru terbukti jalan.
 
 ---
 
-## 13. Checklist eksekusi (setelah kamu setuju)
+## 13. Checklist eksekusi — selesai
 
-1. Salin `docs/rancangan/EHRTraceability.sol.draft` → `contracts/EHRTraceability.sol`.
-2. Salin `docs/rancangan/ehr.test.js.draft` → `test/ehr.test.js`.
-3. Update `scripts/deploy.js` (seeding peran + `demoAccounts`).
-4. `npx hardhat compile && npx hardhat test` — harus 20 lulus.
-5. Jalankan `npx hardhat node`, deploy, catat alamat baru.
-6. Buat 1 batch contoh lengkap (consent → status → treatment) untuk data demo.
-7. Lanjut fase UI (scaffold FastAPI) sesuai rancangan UI §11.
+- [x] `contracts/EHRTraceability.sol` diganti draft teruji
+- [x] `test/ehr.test.js` terpasang
+- [x] `scripts/deploy.js` seeding peran + `demoAccounts`
+- [x] `scripts/seed-demo.js` data demo
+- [x] `npx hardhat compile && npx hardhat test` → 29 lulus
+- [x] `npx hardhat node` + deploy + seed + verifikasi Web3.py
+- [ ] Fase UI (scaffold FastAPI) — sesuai rancangan UI §11
 
 ---
 
-## 14. Pertanyaan kecil (ada default-nya, tidak menghalangi)
+## 14. Default yang dipakai (tidak perlu dijawab)
 
-1. **Jumlah dokter seed**: default **2** (satu untuk demo normal, satu untuk
-   mendemokan ganti dokter). Kalau mau 1, tinggal hapus baris `doctor2`.
-2. **Pasien mana yang dipakai demo**: default akun Hardhat ke-5. Bisa diganti;
-   yang penting jangan pakai akun yang sama dengan dokter.
-3. **Peran untuk akun default MetaMask-mu** (`0x7099…79C8` = akun #1):
-   default dijadikan **RESEPSIONIS**, karena akun inilah yang biasanya aktif
-   di MetaMask saat demo dimulai.
+1. **Jumlah dokter seed**: 2 (satu untuk demo normal, satu untuk mendemokan
+   ganti dokter).
+2. **Pasien demo**: akun Hardhat #4–#7 untuk empat batch contoh.
+3. **Akun #1 (`0x7099…79C8`)**: RESEPSIONIS — akun yang biasanya aktif di
+   MetaMask saat demo dimulai.
 
-Kalau semua default di atas oke, bilang "gas eksekusi" — saya kerjakan
-langkah 1–5 dan laporkan hasil test-nya.
+Semua bisa diubah di blok `SIGNERS` / `SCENARIOS` pada `scripts/seed-demo.js`
+dan di `scripts/deploy.js`.
