@@ -4,8 +4,9 @@ Jalankan dari root repo `Hardhat/`:
 
     uvicorn web.main:app --reload --port 8000
 
-Fase 4: detail batch dengan aksi tulis per peran (status, tindakan, izin,
-ganti dokter). Halaman Wallet & Hak Akses masih stub.
+Fase 5: halaman Wallet & Transaksi (identitas wallet, saldo dari RPC,
+riwayat transaksi sesi ini) dan Hak Akses (izin dokter per batch), plus
+sapuan responsif sampai 375 px.
 """
 
 from __future__ import annotations
@@ -122,38 +123,6 @@ def dashboard(request: Request, refresh: int = 0):
     )
 
 
-# Stub halaman yang dibangun di fase berikutnya. Satu sumber data supaya
-# sidebar, judul, dan isi placeholder tidak berbeda-beda.
-STUBS: dict[str, dict] = {
-    "/wallet": {
-        "heading": "Wallet & Transaksi",
-        "phase": 5,
-        "intro": "Alamat, jaringan, saldo, peran akun, dan status transaksi "
-        "terakhir.",
-        "items": [
-            "Alamat wallet, chain ID, dan saldo dari <code>eth.get_balance</code>",
-            "Peran akun hasil resolusi <code>getRole</code> + kepemilikan NFT",
-            "Riwayat hash transaksi sesi ini",
-        ],
-    },
-    "/hak-akses": {
-        "heading": "Hak Akses",
-        "phase": 5,
-        "intro": "Kendali izin: pasien memberi/mencabut izin dokter, resepsionis "
-        "menunjuk dokter penanggung jawab.",
-        "items": [
-            "Status consent per batch dan dokter",
-            "Pasien: izinkan / cabut izin (hanya pemilik NFT)",
-            "Resepsionis: ganti dokter penanggung jawab",
-        ],
-    },
-}
-
-
-def _stub(request: Request, path: str) -> HTMLResponse:
-    return _page(request, "stub.html", stub=STUBS[path], path=path)
-
-
 @app.get("/rekam-medis", response_class=HTMLResponse)
 def batch_list(
     request: Request,
@@ -249,13 +218,19 @@ def batch_new(request: Request, refresh: int = 0):
 
 
 @app.get("/wallet", response_class=HTMLResponse)
-def wallet(request: Request):
-    return _stub(request, "/wallet")
+def wallet_page(request: Request, refresh: int = 0):
+    """Wallet & Transaksi: identitas wallet, saldo RPC, riwayat sesi ini."""
+    if refresh:
+        chain.refresh()
+    return _page(request, "wallet.html", meta=chain.contract_meta())
 
 
 @app.get("/hak-akses", response_class=HTMLResponse)
-def access(request: Request):
-    return _stub(request, "/hak-akses")
+def access_page(request: Request, refresh: int = 0):
+    """Hak Akses: izin dokter per batch, disaring sesuai peran wallet."""
+    if refresh:
+        chain.refresh()
+    return _page(request, "hak_akses.html")
 
 
 @app.get("/refresh")
@@ -315,6 +290,47 @@ def api_batch_context(token_id: int, address: str = ""):
         return JSONResponse({"error": "Batch tidak ditemukan."}, status_code=404)
 
     return JSONResponse(info)
+
+
+@app.get("/api/account")
+def api_account(address: str = ""):
+    """Peran, saldo, nonce, dan harga gas satu alamat — dasar halaman Wallet."""
+    try:
+        return JSONResponse(tx.account_overview(address))
+    except tx.TxError as exc:
+        return JSONResponse({"error": exc.message}, status_code=exc.status)
+
+
+@app.get("/api/access")
+def api_access(address: str = ""):
+    """Tabel izin per batch sesuai peran wallet (dasar halaman Hak Akses)."""
+    try:
+        payload = tx.access_overview(address)
+    except tx.TxError as exc:
+        return JSONResponse({"error": exc.message}, status_code=exc.status)
+
+    # Daftar akun demo + perannya hanya berguna untuk admin (halaman penjelasan
+    # peran). Label-nya milik lapisan halaman, jadi disusun di sini.
+    if payload["role"] == "ADMIN":
+        accounts = []
+        for account in _demo_accounts():
+            try:
+                info = tx.account_overview(account["address"])
+            except tx.TxError:
+                continue
+            accounts.append(
+                {
+                    "label": account["label"],
+                    "address": account["address"],
+                    "role": info["role"],
+                    "roleLabel": info["roleLabel"],
+                    "ownedBatches": info["ownedBatches"],
+                    "assignedBatches": info["assignedBatches"],
+                }
+            )
+        payload["accounts"] = accounts
+
+    return JSONResponse(payload)
 
 
 @app.post("/api/tx/build")

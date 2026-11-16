@@ -1,7 +1,7 @@
 ---
 type: design-doc
 project: EHR Traceability (Praktikum Blockchain Pertemuan 11–12)
-status: fase 1–4 selesai (status jaringan, dashboard, daftar batch, form Buat Batch, aksi tulis detail), fase 5 jalan
+status: fase 1–5 selesai (status jaringan, dashboard, daftar batch, form Buat Batch, aksi tulis detail, Wallet + Hak Akses + responsif)
 last_updated: 2026-11-16
 ---
 
@@ -9,10 +9,12 @@ last_updated: 2026-11-16
 
 Dokumen ini rancangan UI untuk tugas **Pertemuan 11–12: Implementasi UI**.
 Isinya keputusan desain, struktur halaman, pemetaan ke smart contract, dan
-rencana kerja. Status: **fase 1–4 sudah jalan** (kerangka FastAPI + layout +
+rencana kerja. Status: **fase 1–5 sudah jalan** — kerangka FastAPI + layout +
 `/api/health`, dashboard + daftar batch read-only, form Buat Batch yang
-mengirim transaksi lewat MetaMask, lalu aksi tulis di detail batch: majukan
-status, simpan tindakan/obat, izin pasien, ganti dokter), fase 5 menyusul.
+mengirim transaksi lewat MetaMask, aksi tulis di detail batch (majukan
+status, simpan tindakan/obat, izin pasien, ganti dokter), lalu Wallet &
+Transaksi + Hak Akses dan sapuan responsif sampai 375 px. Semua halaman yang
+dijanjikan modul sudah ada.
 `contracts/*.sol` tidak disentuh lagi sejak rancangan kontrak diterapkan.
 
 ---
@@ -453,6 +455,15 @@ sesi ini (disimpan di `localStorage`, bisa dihapus), dan info teknis RPC.
   "Tambah/Switch ke Hardhat Local" (pakai `wallet_addEthereumChain`).
 - RPC mati → saldo `—`, banner.
 
+**Catatan implementasi:** saldo, nonce, dan harga gas dibaca server lewat
+Web3.py, bukan dari MetaMask — jadi angkanya tetap milik node yang dipakai
+aplikasi walaupun wallet tersambung ke jaringan lain, dan banner menjelaskan
+bedanya. Riwayat sesi hanya mencatat transaksi yang punya **hash** (artinya
+sampai ke node); penolakan MetaMask tidak pernah punya hash, jadi tidak
+dipalsukan sebagai "gagal". Tombol pemutus wallet dinamai "Lupakan sesi":
+`wallet_revokePermissions` belum ada di semua versi MetaMask, dan kalau
+ditolak halaman bilang terus terang bahwa pencabutan harus dari ekstensi.
+
 ### 5.6 Hak Akses — `/hak-akses`
 
 **Tujuan:** tempat pasien memberi/mencabut izin dokter dan resepsionis
@@ -480,7 +491,12 @@ menunjuk dokter — plus penjelasan transparan siapa boleh menulis apa.
 | Pasien | daftar batch miliknya + tombol **Izinkan / Cabut izin** (hanya batch dengan status belum `COMPLETED`) |
 | Resepsionis | tabel semua batch + dokter penanggung jawab + consent aktif, tautan ke detail untuk ganti dokter |
 | Dokter | daftar batch yang ditugaskan kepadanya + status izin (menunggu / aktif) |
-| Admin | daftar dokter terdaftar (`getDoctors()`) + peran tiap akun |
+| Admin | semua batch (baca saja) + tabel akun demo: alamat, peran, jumlah batch yang dimiliki/ditugaskan |
+
+Baris tabel disaring di server (`GET /api/access`) mengikuti peran, bukan
+disembunyikan di CSS — halaman tidak pernah menawarkan tombol yang pasti
+ditolak kontrak. Batch `COMPLETED` tetap tampil sebagai riwayat, tapi
+tombolnya berubah jadi tautan "Lihat".
 
 Penjelasan yang ditampilkan (bukan hiasan, ini jawaban untuk dosen):
 `updateStatus()` dan `updateTreatment()` memerlukan tiga syarat sekaligus —
@@ -640,7 +656,7 @@ Cek sebelum bilang selesai:
 
 ---
 
-## 11. Rencana kerja (belum dieksekusi)
+## 11. Rencana kerja (semua fase selesai)
 
 | Fase | Isi | Hasil yang bisa dicek |
 |---|---|---|
@@ -650,7 +666,7 @@ Cek sebelum bilang selesai:
 | **2** ✅ | Dashboard + Daftar Batch (read-only) | data asli dari kontrak tampil, filter jalan |
 | **3** ✅ | Form Buat Batch + `tx.py` + MetaMask + tx panel | satu transaksi `createBatch` sukses dari UI |
 | **4** ✅ | Detail + majukan status + tindakan + consent | alur 3 peran jalan dari UI |
-| 5 | Wallet + Hak Akses + responsif + README | semua halaman modul lengkap |
+| **5** ✅ | Wallet + Hak Akses + responsif + README | semua halaman modul lengkap |
 
 Catatan fase 2: halaman detail `/rekam-medis/{token_id}` ikut dibuat dalam
 versi **read-only** (stepper, data medis, NFT & penugasan, riwayat) supaya
@@ -708,6 +724,44 @@ Catatan fase 4:
 - Perbaikan kecil: nav "Buat Batch" tidak lagi menyala bersama "Daftar Batch"
   (aturan `is_active` sebelumnya menganggap semua `/rekam-medis/*` sebagai
   halaman detail).
+
+Catatan fase 5:
+- Dua halaman stub diganti halaman sungguhan (`wallet.html`,
+  `hak_akses.html`); `stub.html` + daftar `STUBS` di `main.py` dihapus supaya
+  tidak ada placeholder yang tertinggal.
+- Endpoint baru: `GET /api/account?address=…` (peran efektif, saldo, nonce,
+  harga gas, jumlah batch milik/ditugaskan) dan `GET /api/access?address=…`
+  (baris izin + hitungan + daftar dokter; untuk admin ditambah tabel akun
+  demo). Keduanya memakai `400 {error}` yang sama dengan endpoint tulis.
+- Aturan identitas tetap satu: `getRole()` dulu, dan `NONE` yang memiliki
+  minimal satu NFT dibaca sebagai `PASIEN` (`_effective_role`, dipakai juga
+  oleh `batch_context`).
+- State wallet sekarang milik `Alpine.store("wallet")` di `wallet.js`; topbar
+  (`walletBar`) hanya meneruskan getter, sehingga `/wallet`, `/hak-akses`, dan
+  halaman detail membaca satu sumber alamat. `ensureChain()` pindah ke store
+  supaya hanya ada satu implementasi switch jaringan.
+- Helper fetch diekstrak ke `web/static/js/api.js` (`window.ehrApi`) dan
+  dimuat paling awal di `base.html`; `tx.js` serta `account.js` memakainya.
+  `window.ehrTx` sekarang hanya mengekspor `txMachine`, `shortHash`,
+  `fmtNumber`.
+- Riwayat transaksi sesi disimpan di `localStorage` (`ehr.txlog.v1`, maks 20
+  entri) lewat `window.ehrSession`; hanya transaksi ber-hash yang dicatat,
+  dan tombol Hapus ada di halaman Wallet.
+- Responsif: sidebar ≤900 px membungkus (`flex-wrap`) alih-alih scroll
+  horizontal — "Buat Batch" tidak lagi terpotong di 375 px. Diukur di
+  Chromium 375 px: `scrollWidth == clientWidth == 375` untuk `/wallet`,
+  `/hak-akses`, `/rekam-medis`, dan `/rekam-medis/4`; tabel lebar tetap
+  menggeser di dalam `.table-wrap`, dan halaman Hak Akses menampilkan
+  petunjuk "geser tabel" di layar sempit karena kolom aksi ada di ujung.
+- Uji UI (provider wallet tiruan → node lokal): wallet pasien (saldo/nonce
+  cocok dengan RPC), riwayat sesi terisi setelah izin diberikan, salin alamat
+  → "Tersalin", putus wallet → empty-state jujur soal keterbatasan MetaMask,
+  Hak Akses per peran (pasien 1 baris bisa izin, dokter 2 baris status saja,
+  resepsionis 4 baris + "Ganti dokter", admin tabel akun), serta regresi
+  fase 3 (buat batch sukses) dan fase 4 (majukan status) setelah refactor
+  `wallet.js`/`tx.js`.
+- Chain di-reset (`deploy.js` + `seed-demo.js`) setelah pengujian supaya
+  state demo bersih: 4 batch, izin #4 belum diberikan.
 
 Aturan: satu fase selesai & dites, baru lanjut. Jangan bangun semua
 sekaligus lalu debug di akhir.

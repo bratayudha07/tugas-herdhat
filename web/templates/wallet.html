@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+
+{% block head_scripts %}
+<script defer src="{{ url_for('static', path='js/account.js') }}"></script>
+{% endblock %}
+
+{% block title %}Wallet &amp; Transaksi · EHR Traceability{% endblock %}
+{% block heading %}Wallet &amp; Transaksi{% endblock %}
+
+{% block content %}
+<div x-data="walletPage">
+  <div class="page-head">
+    <div>
+      <h2>Wallet &amp; Transaksi</h2>
+      <p>
+        Alamat dari MetaMask; peran, saldo, dan harga gas dibaca lewat Web3.py
+        dari node <span class="mono">{{ rpc_display }}</span>.
+      </p>
+    </div>
+    <div class="page-actions">
+      <span
+        class="chip"
+        x-cloak
+        :data-state="chainMatches() === false ? 'warn' : (mode() === 'ready' ? 'ok' : 'warn')"
+      >
+        <span class="dot" aria-hidden="true"></span>
+        <span
+          x-text="mode() === 'ready'
+            ? (chainMatches() === false ? 'Jaringan beda' : 'Terhubung')
+            : (mode() === 'no-provider' ? 'Tanpa MetaMask' : 'Belum tersambung')"
+        ></span>
+      </span>
+      <a class="btn btn-ghost" href="{{ query_url(refresh=1) }}">
+        {{ icon('refresh', 16) }} Muat ulang
+      </a>
+    </div>
+  </div>
+
+  {# --- gerbang wallet --- #}
+  <div class="banner" data-tone="warning" role="status" x-show="mode() === 'no-provider'">
+    <span class="banner-icon">{{ icon('wallet', 18) }}</span>
+    <div>
+      <h3>MetaMask tidak terdeteksi</h3>
+      <p>
+        Halaman ini membaca alamat langsung dari wallet. Tanpa ekstensi,
+        alamat, saldo, dan peran tidak bisa ditampilkan.
+        <a href="https://metamask.io/download/" rel="noreferrer noopener" target="_blank">
+          Pasang MetaMask
+        </a>
+        lalu muat ulang halaman.
+      </p>
+    </div>
+  </div>
+
+  <div class="banner" data-tone="info" role="status" x-show="mode() === 'no-wallet'">
+    <span class="banner-icon">{{ icon('wallet', 18) }}</span>
+    <div>
+      <h3>Wallet belum tersambung</h3>
+      <p>
+        MetaMask ada, tapi situs ini belum diizinkan memakai akun apa pun.
+        Setelah tersambung, alamat dan peran akun itu muncul di sini.
+      </p>
+      <button
+        type="button"
+        class="btn btn-primary btn-sm"
+        style="margin-top: 10px"
+        :disabled="$store.wallet.busy"
+        @click="$store.wallet.connect()"
+      >
+        {{ icon('wallet', 14) }}
+        <span x-text="$store.wallet.busy ? 'Menyambungkan…' : 'Sambungkan wallet'"></span>
+      </button>
+    </div>
+  </div>
+
+  <div
+    class="banner"
+    data-tone="warning"
+    role="status"
+    x-show="chainMatches() === false"
+  >
+    <span class="banner-icon">{{ icon('alert', 18) }}</span>
+    <div>
+      <h3>Jaringan MetaMask berbeda dari RPC</h3>
+      <p>
+        Wallet memakai chain <strong x-text="chainText()"></strong>, sedangkan
+        server membaca chain
+        <strong class="mono">{{ health.expectedChainId or '—' }}</strong>. Saldo
+        di kartu bawah tetap milik node server, jadi bisa berbeda dari yang
+        tampil di MetaMask. Transaksi akan ditolak sampai jaringannya sama.
+      </p>
+      <button type="button" class="btn btn-ghost btn-sm" style="margin-top: 10px" @click="switchNetwork()">
+        {{ icon('refresh', 14) }} Tambah / pindah ke Hardhat Local
+      </button>
+    </div>
+  </div>
+
+  <div class="banner" data-tone="danger" role="alert" x-show="mode() === 'ready' && error">
+    <span class="banner-icon">{{ icon('alert', 18) }}</span>
+    <div>
+      <h3>Data akun tidak bisa dibaca</h3>
+      <p x-text="error"></p>
+    </div>
+  </div>
+
+  <div class="grid-two">
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <h2 class="card-title">Identitas wallet</h2>
+          <p class="hint" style="margin: 2px 0 0">
+            Peran hasil <span class="mono">getRole()</span> + kepemilikan NFT.
+          </p>
+        </div>
+      </div>
+      <div class="card-body stack">
+        <dl class="def-list">
+          <dt>Alamat</dt>
+          <dd>
+            <div class="copy-row">
+              <span class="mono address-full" x-text="address() || '—'"></span>
+              <button
+                type="button"
+                class="btn btn-ghost btn-sm"
+                x-show="address()"
+                @click="copy(address())"
+                :aria-label="copied === 'address' ? 'Alamat tersalin' : 'Salin alamat wallet'"
+              >
+                <span x-text="copied === 'address' ? 'Tersalin' : 'Salin'"></span>
+              </button>
+            </div>
+          </dd>
+          <dt>Peran</dt>
+          <dd>
+            <span x-text="roleLabel()"></span>
+            <span class="hint" x-show="scopeNote()" x-text="scopeNote()"></span>
+          </dd>
+          <dt>Jaringan</dt>
+          <dd>
+            <span class="mono" x-text="chainText()"></span>
+            <span class="hint" x-show="chainMatches() === true">sama dengan RPC server</span>
+            <span class="hint" x-show="chainMatches() === false">berbeda dari RPC server</span>
+          </dd>
+          <dt>Saldo</dt>
+          <dd>
+            <span class="mono" x-text="balanceText()"></span>
+            <span class="hint">dibaca dari RPC, bukan dari MetaMask</span>
+          </dd>
+          <dt>Nonce</dt>
+          <dd>
+            <span class="mono" x-text="account && account.nonce !== null && account.nonce !== undefined ? account.nonce : '—'"></span>
+            <span class="hint">jumlah transaksi keluar akun ini</span>
+          </dd>
+        </dl>
+
+        <div class="tx-actions">
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm"
+            x-show="mode() === 'ready'"
+            @click="switchAccount()"
+          >
+            {{ icon('wallet', 14) }} Ganti akun
+          </button>
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm"
+            x-show="mode() === 'ready'"
+            @click="disconnect()"
+          >
+            Lupakan sesi
+          </button>
+        </div>
+
+        <p class="hint" role="status" x-show="note" x-text="note"></p>
+        <p class="hint" x-show="loading" aria-live="polite">Membaca data akun…</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <h2 class="card-title">Transaksi sesi ini</h2>
+          <p class="hint" style="margin: 2px 0 0">
+            Disimpan di browser (localStorage), 20 terakhir.
+          </p>
+        </div>
+        <button
+          type="button"
+          class="btn btn-ghost btn-sm"
+          x-show="history.length"
+          @click="clearHistory()"
+        >
+          Hapus
+        </button>
+      </div>
+
+      <template x-if="history.length">
+        <div class="recent-list">
+          <template x-for="entry in history" :key="entry.hash">
+            <div class="recent-item">
+              <span class="recent-main">
+                <span class="recent-name" x-text="entry.label"></span>
+                <span class="recent-meta">
+                  <span x-text="txState(entry)"></span> ·
+                  <span x-text="txMeta(entry)"></span> ·
+                  <span x-text="fmtTime(entry.at)"></span>
+                </span>
+                <span class="mono recent-hash" x-text="entry.hash"></span>
+              </span>
+              <a
+                class="btn btn-ghost btn-sm"
+                x-show="entry.tokenId"
+                :href="'/rekam-medis/' + entry.tokenId"
+              >
+                Detail
+              </a>
+            </div>
+          </template>
+        </div>
+      </template>
+
+      <div class="empty-state" x-show="!history.length">
+        <strong>Belum ada transaksi</strong>
+        <span>
+          Transaksi yang kamu tanda tangani di sesi ini muncul di sini.
+          Penolakan di MetaMask tidak punya hash, jadi tidak bisa dicatat.
+        </span>
+      </div>
+    </section>
+  </div>
+
+  <section class="card">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title">Informasi teknis</h2>
+        <p class="hint" style="margin: 2px 0 0">
+          Angka dari node yang dipakai aplikasi, bukan dari wallet.
+        </p>
+      </div>
+    </div>
+    <div class="card-body stack">
+      <dl class="def-list def-list--tight">
+        <dt>RPC</dt>
+        <dd class="mono" title="{{ rpc_url }}">{{ rpc_url }}</dd>
+        <dt>Chain</dt>
+        <dd class="mono">
+          {{ health.chainId or '—' }} · diharapkan {{ health.expectedChainId or '—' }}
+        </dd>
+        <dt>Blok</dt>
+        <dd class="mono">{{ health.block | fmt_number }}</dd>
+        <dt>Kontrak</dt>
+        <dd class="mono" title="{{ contract_address }}">{{ contract_address or '—' }}</dd>
+        <dt>Harga gas</dt>
+        <dd class="mono" x-text="gasText()"></dd>
+      </dl>
+      <p class="hint" style="margin: 0">
+        Private key tidak pernah dikirim ke server: halaman ini hanya membaca
+        alamat, saldo, dan hash transaksi. Tanda tangan tetap di MetaMask.
+      </p>
+    </div>
+  </section>
+</div>
+{% endblock %}

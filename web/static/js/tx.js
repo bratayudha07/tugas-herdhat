@@ -15,7 +15,8 @@
 
   const wallet = () => Alpine.store("wallet");
 
-  const chainHex = (id) => "0x" + Number(id).toString(16);
+  // Helper fetch dipakai bersama `account.js`; dimuat dari `api.js`.
+  const { getJSON, postJSON } = window.ehrApi;
 
   function shortHash(hash) {
     if (!hash) return "";
@@ -27,59 +28,25 @@
     return Number(value).toLocaleString("id-ID");
   }
 
-  async function postJSON(url, body) {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    return { ok: response.ok, status: response.status, data: await readJSON(response) };
-  }
-
-  async function getJSON(url) {
-    const response = await fetch(url);
-    return { ok: response.ok, status: response.status, data: await readJSON(response) };
-  }
-
-  async function readJSON(response) {
-    try {
-      return (await response.json()) || {};
-    } catch (error) {
-      return {};
-    }
-  }
-
   /**
-   * Pastikan MetaMask memakai chain yang sama dengan RPC server.
-   * Kalau chain-nya belum ada di wallet, tawarkan penambahan otomatis.
+   * Catat transaksi yang sudah sampai ke node ke riwayat sesi (localStorage).
+   *
+   * Yang dicatat hanya yang punya hash — penolakan MetaMask tidak pernah
+   * menghasilkan hash, jadi tidak ada yang bisa ditampilkan di halaman Wallet.
    */
-  async function ensureChain() {
-    const expected = wallet().expectedChainId;
-    if (!expected || wallet().chainId === expected) return true;
-
-    try {
-      await window.ethereum.request({
-        method: "wallet_switchEthereumChain",
-        params: [{ chainId: chainHex(expected) }],
-      });
-    } catch (error) {
-      if (error?.code !== 4902) throw error;
-
-      await window.ethereum.request({
-        method: "wallet_addEthereumChain",
-        params: [
-          {
-            chainId: chainHex(expected),
-            chainName: "Hardhat Local",
-            rpcUrls: [document.documentElement.dataset.rpcUrl],
-            nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-          },
-        ],
-      });
-    }
-
-    wallet().chainId = expected;
-    return true;
+  function recordSession(state) {
+    if (!this.hash) return;
+    window.ehrSession?.add({
+      hash: this.hash,
+      state,
+      action: this.tx?.action || "",
+      label: this.tx?.label || "Transaksi",
+      block: this.result?.block ?? null,
+      gas: this.result?.gas ?? null,
+      tokenId: this.result?.tokenId ?? this.tx?.predictedTokenId ?? null,
+      from: this.tx?.from || wallet().address,
+      reason: this.result?.reason || "",
+    });
   }
 
   /**
@@ -199,7 +166,7 @@
         this.banner = "";
 
         try {
-          await ensureChain();
+          await wallet().ensureChain();
         } catch (error) {
           this.phase = "error";
           this.banner =
@@ -254,18 +221,25 @@
         }
 
         this.result = response.data;
+        const success = response.data.state === "success";
         try {
           // Refresh konteks dulu, baru tandai sukses: begitu panel bilang
           // "berhasil", tombol di kartu aksi sudah sesuai state chain.
-          if (response.data.state === "success") await this.onTxSuccess(this.result);
+          if (success) await this.onTxSuccess(this.result);
         } finally {
-          this.phase = response.data.state === "success" ? "success" : "failed";
+          this.phase = success ? "success" : "failed";
         }
+        recordSession.call(this, this.phase);
         this.revealPanel();
       },
 
       /** Kait halaman: dipanggil sekali setelah transaksi sukses masuk blok. */
       async onTxSuccess() {},
+
+      /** Muat ulang halaman penuh — dipakai panel sukses di beberapa halaman. */
+      refreshPage() {
+        window.location.reload();
+      },
 
       // Kirim ulang transaksi yang sudah disiapkan (mis. setelah user menolak
       // di MetaMask) — tidak perlu validasi ulang, calldata masih sama.
@@ -517,10 +491,6 @@
           });
         },
 
-        refreshPage() {
-          window.location.reload();
-        },
-
         async onTxSuccess() {
           // Server sudah membuang cache bacaan setelah receipt sukses, jadi
           // konteks baru di sini mencerminkan status/izin setelah transaksi.
@@ -530,6 +500,7 @@
     );
   });
 
-  // Dipakai halaman lain kalau butuh helper yang sama.
-  window.ehrTx = { ensureChain, postJSON, getJSON, shortHash, fmtNumber };
+  // Helper kecil yang mungkin dipakai halaman lain. Fetch & wallet ada di
+  // `window.ehrApi` dan `Alpine.store("wallet")`.
+  window.ehrTx = { shortHash, fmtNumber, txMachine };
 })();

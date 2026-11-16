@@ -532,6 +532,14 @@
     background: var(--text-muted);
   }
 
+  /* Deret chip yang boleh turun baris (daftar dokter, ringkasan izin). */
+  .chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+
   .chip[data-state="ok"] .dot {
     background: var(--success);
   }
@@ -703,6 +711,22 @@
   .table-wrap {
     min-width: 0;
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Petunjuk geser tabel: hanya muncul saat tabel memang tidak muat
+     (layar sempit). Tanpa ini, kolom aksi tersembunyi di luar layar dan
+     pengguna tidak tahu tombolnya ada. */
+  .table-scroll-hint {
+    display: none;
+    margin: 0;
+    padding: 10px 20px 0;
+  }
+
+  @media (max-width: 640px) {
+    .table-scroll-hint {
+      display: block;
+    }
   }
 
   .data-table {
@@ -809,10 +833,12 @@
   .list-check {
     margin: 0;
     padding-left: 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
     color: var(--text-muted);
+    list-style: disc outside;
+  }
+
+  .list-check > li + li {
+    margin-top: 6px;
   }
 
   .list-check strong {
@@ -1105,6 +1131,41 @@
 
   .recent-progress {
     flex: none;
+  }
+
+  /* Hash transaksi di riwayat sesi — boleh pecah di mana saja. */
+  .recent-hash {
+    font-size: 12px;
+    color: var(--text-muted);
+    overflow-wrap: anywhere;
+  }
+
+  /* Alamat + tombol salin pada halaman Wallet. */
+  .copy-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .address-full {
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow-wrap: anywhere;
+  }
+
+  /* Tautan baris tabel: teks biasa, bukan tombol. */
+  .row-link {
+    display: block;
+    color: var(--text);
+    font-weight: 500;
+    text-decoration: none;
+    text-underline-offset: 2px;
+  }
+
+  .row-link:hover {
+    color: var(--primary-strong);
+    text-decoration: underline;
   }
 
   /* --- stepper detail --- */
@@ -1495,15 +1556,16 @@
 
     .nav {
       flex-direction: row;
-      gap: 16px;
-      overflow-x: auto;
+      flex-wrap: wrap;
+      gap: 12px 16px;
+      overflow: visible;
       width: 100%;
       order: 3;
-      padding-bottom: 4px;
     }
 
     .nav-group {
       flex-direction: row;
+      flex-wrap: wrap;
       align-items: center;
       gap: 4px;
     }
@@ -1556,6 +1618,18 @@
   @media (max-width: 520px) {
     .recent-progress {
       display: none;
+    }
+
+    /* Riwayat sesi & daftar terbaru: biarkan teks membungkus, jangan
+       terpotong elipsis di layar sempit. */
+    .recent-item {
+      flex-wrap: wrap;
+    }
+
+    .recent-name,
+    .recent-meta {
+      white-space: normal;
+      overflow: visible;
     }
 
     .def-list {

@@ -455,6 +455,135 @@ def batch_context(token_id: int, address: str) -> dict | None:
 
 
 # --------------------------------------------------------------------------
+# Ringkasan akun & tabel izin (halaman Wallet dan Hak Akses)
+# --------------------------------------------------------------------------
+
+
+def _batches_or_error() -> list[dict]:
+    """Daftar batch atau 503 — halaman yang butuh tabel tidak boleh kosong diam."""
+    batches = chain.list_batches()
+    if batches is None:
+        raise TxError(
+            "Daftar batch tidak bisa dibaca dari kontrak. Cek RPC lalu muat ulang.",
+            status=503,
+        )
+    return batches
+
+
+def _same_address(left, right) -> bool:
+    return bool(left) and bool(right) and str(left).lower() == str(right).lower()
+
+
+def _effective_role(info: dict, batches: list[dict]) -> tuple[str, list[dict]]:
+    """Peran efektif + batch milik alamat ini.
+
+    Aturan yang sama dengan topbar dan `batch_context`: peran `NONE` yang
+    memiliki minimal satu NFT dibaca sebagai PATIENT.
+    """
+    owned = [batch for batch in batches if _same_address(batch.get("patient"), info["address"])]
+    role = info["role"]
+    if role == "NONE" and owned:
+        return "PATIENT", owned
+    return role, owned
+
+
+def account_overview(address: str) -> dict:
+    """Identitas satu wallet untuk halaman Wallet & Transaksi.
+
+    Saldo dibaca lewat Web3.py (node server), bukan dari MetaMask — kalau
+    wallet tersambung ke jaringan lain, angka di sini tetap milik node yang
+    dipakai aplikasi, dan banner di halaman menjelaskan bedanya.
+    """
+    _require_rpc()
+    info = chain.role_of(validate._text(address))
+    if info is None:
+        raise TxError("Alamat wallet tidak valid.")
+
+    batches = _batches_or_error()
+    role, owned = _effective_role(info, batches)
+    account = chain.account_info(info["address"]) or {}
+    health = chain.health()
+
+    return {
+        "address": info["address"],
+        "contractRole": info["role"],
+        "role": role,
+        "roleLabel": view.role_label(role),
+        "ownedBatches": len(owned),
+        "assignedBatches": sum(
+            1 for batch in batches if _same_address(batch.get("doctor"), info["address"])
+        ),
+        "balance": account.get("balance"),
+        "nonce": account.get("nonce"),
+        "gasPrice": account.get("gasPrice"),
+        "chainId": health["chainId"],
+        "expectedChainId": health["expectedChainId"],
+        "block": health["block"],
+    }
+
+
+def access_overview(address: str) -> dict:
+    """Tabel izin dokter untuk halaman Hak Akses, sesuai peran wallet.
+
+    Baris yang tidak relevan untuk peran itu tidak dikirim, supaya halaman
+    tidak menampilkan tombol yang tidak mungkin dipakai:
+
+    - PATIENT: hanya batch miliknya (bisa beri/cabut izin).
+    - DOCTOR: hanya batch yang ditugaskan kepadanya (status izin).
+    - RECEPTIONIST: semua batch, dengan tautan ganti dokter ke detail.
+    - ADMIN / tanpa peran: semua batch, baca saja.
+    """
+    _require_rpc()
+    info = chain.role_of(validate._text(address))
+    if info is None:
+        raise TxError("Alamat wallet tidak valid.")
+
+    batches = _batches_or_error()
+    role, _owned = _effective_role(info, batches)
+
+    rows = []
+    for batch in sorted(batches, key=lambda item: item["tokenId"], reverse=True):
+        doctor = batch.get("doctor") or ""
+        is_owner = _same_address(batch.get("patient"), info["address"])
+        is_assigned = _same_address(doctor, info["address"])
+
+        if role == "PATIENT" and not is_owner:
+            continue
+        if role == "DOCTOR" and not is_assigned:
+            continue
+
+        completed = batch["status"] >= len(view.STATUS_ORDER) - 1
+        rows.append(
+            {
+                "tokenId": batch["tokenId"],
+                "patientId": batch["patientId"],
+                "patientName": batch["patientName"],
+                "status": _current_status(batch),
+                "completed": completed,
+                "doctor": doctor,
+                "patient": batch["patient"],
+                "consent": chain.consent_of(batch["tokenId"], doctor) if doctor else None,
+                "isOwner": is_owner,
+                "isAssignedDoctor": is_assigned,
+                "canConsent": role == "PATIENT" and is_owner and not completed and bool(doctor),
+            }
+        )
+
+    return {
+        "address": info["address"],
+        "role": role,
+        "roleLabel": view.role_label(role),
+        "rows": rows,
+        "counts": {
+            "total": len(rows),
+            "active": sum(1 for row in rows if row["consent"] is True),
+            "waiting": sum(1 for row in rows if row["consent"] is False),
+        },
+        "doctors": chain.doctors(),
+    }
+
+
+# --------------------------------------------------------------------------
 # Status transaksi
 # --------------------------------------------------------------------------
 

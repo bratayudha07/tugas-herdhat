@@ -240,6 +240,34 @@ def consent_of(token_id: int, doctor: str) -> bool | None:
         return None
 
 
+def account_info(address: str) -> dict | None:
+    """Saldo, nonce, dan harga gas satu alamat — dibaca dari RPC server.
+
+    Halaman Wallet menampilkan angka ini sebagai pembanding independen dari
+    MetaMask: kalau wallet tersambung ke jaringan lain, saldo di sini tetap
+    angka milik node yang dipakai aplikasi.
+    """
+    if not address or not Web3.is_address(address):
+        return None
+
+    checksum = Web3.to_checksum_address(address)
+
+    def read() -> dict | None:
+        try:
+            w3 = get_web3()
+            return {
+                "address": checksum,
+                "balance": float(Web3.from_wei(w3.eth.get_balance(checksum), "ether")),
+                "nonce": int(w3.eth.get_transaction_count(checksum)),
+                "gasPrice": float(Web3.from_wei(w3.eth.gas_price, "gwei")),
+            }
+        except Exception:
+            return None
+
+    # Cache per alamat: pindah akun di MetaMask tidak perlu menembak RPC lagi.
+    return _cached(f"account:{checksum.lower()}", read)
+
+
 def doctors() -> list[str]:
     """Daftar dokter terdaftar untuk dropdown/filter."""
     contract = get_contract()
@@ -267,15 +295,23 @@ def role_of(address: str) -> dict | None:
 
     try:
         checksum = Web3.to_checksum_address(address)
-        value = int(contract.functions.getRole(checksum).call())
-    except Exception:
+    except ValueError:
         return None
 
-    return {
-        "address": checksum,
-        "role": ROLE_NAMES[value] if 0 <= value < len(ROLE_NAMES) else "NONE",
-        "roleIndex": value,
-    }
+    def read() -> dict:
+        value = int(contract.functions.getRole(checksum).call())
+        return {
+            "address": checksum,
+            "role": ROLE_NAMES[value] if 0 <= value < len(ROLE_NAMES) else "NONE",
+            "roleIndex": value,
+        }
+
+    try:
+        # Hanya hasil sukses yang di-cache: kegagalan RPC dibiarkan dicoba
+        # ulang pada permintaan berikutnya, bukan disimpan 15 detik.
+        return _cached(f"role:{checksum.lower()}", read)
+    except Exception:
+        return None
 
 
 def chain_label(status: dict) -> str:

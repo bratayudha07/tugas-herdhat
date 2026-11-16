@@ -1,0 +1,302 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{% from "partials/bits.html" import tx_dialog, tx_panel %}
+
+{% block head_scripts %}
+<script defer src="{{ url_for('static', path='js/tx.js') }}"></script>
+<script defer src="{{ url_for('static', path='js/account.js') }}"></script>
+{% endblock %}
+
+{% block title %}Hak Akses · EHR Traceability{% endblock %}
+{% block heading %}Hak Akses{% endblock %}
+
+{% block content %}
+<div x-data="accessPage">
+  <div class="page-head">
+    <div>
+      <h2>Izin Dokter per Batch</h2>
+      <p>
+        Dibaca dari <span class="mono">consent[tokenId][doctor]</span> dan
+        <span class="mono">getBatch()</span>. Baris yang tampil mengikuti peran
+        wallet yang tersambung.
+      </p>
+    </div>
+    <div class="page-actions">
+      <span class="chip" x-cloak x-show="mode() === 'ready'">
+        <span class="dot" aria-hidden="true"></span>
+        <span x-text="roleLabel"></span>
+      </span>
+      <a class="btn btn-ghost" href="{{ query_url(refresh=1) }}">
+        {{ icon('refresh', 16) }} Muat ulang
+      </a>
+    </div>
+  </div>
+
+  {# Aturan yang sama dipakai kontrak — ditulis di halaman, bukan cuma di kode. #}
+  <div class="banner" data-tone="info">
+    <span class="banner-icon">{{ icon('shield', 18) }}</span>
+    <div>
+      <h3>Hak tulis = peran + penugasan + izin pasien</h3>
+      <p>
+        <span class="mono">updateStatus()</span> dan
+        <span class="mono">updateTreatment()</span> menuntut tiga syarat
+        sekaligus: wallet berperan <span class="mono">DOCTOR</span>, tercatat
+        sebagai dokter penanggung jawab batch itu, dan sudah diberi izin
+        pasien. Resepsionis menunjuk dokter dari halaman detail batch; izin
+        dokter lama otomatis dicabut kontrak.
+      </p>
+    </div>
+  </div>
+
+  {# --- gerbang wallet --- #}
+  <div class="banner" data-tone="warning" role="status" x-show="mode() === 'no-provider'">
+    <span class="banner-icon">{{ icon('wallet', 18) }}</span>
+    <div>
+      <h3>MetaMask tidak terdeteksi</h3>
+      <p>
+        Izin hanya bisa diberikan dari wallet pasien pemilik NFT, jadi halaman
+        ini butuh wallet. Tanpa ekstensi, tidak ada baris yang bisa ditampilkan.
+      </p>
+    </div>
+  </div>
+
+  <div class="banner" data-tone="info" role="status" x-show="mode() === 'no-wallet'">
+    <span class="banner-icon">{{ icon('wallet', 18) }}</span>
+    <div>
+      <h3>Wallet belum tersambung</h3>
+      <p>
+        Sambungkan wallet lewat tombol di kanan atas. Setelah itu daftar izin
+        disaring sesuai peran akun tersebut.
+      </p>
+    </div>
+  </div>
+
+  <p class="action-note" x-show="mode() === 'loading'">Membaca izin dari chain…</p>
+
+  <div class="banner" data-tone="danger" role="alert" x-show="mode() === 'error'">
+    <span class="banner-icon">{{ icon('alert', 18) }}</span>
+    <div>
+      <h3>Data izin tidak bisa dibaca</h3>
+      <p x-text="error"></p>
+    </div>
+  </div>
+
+  <section class="card" x-show="mode() === 'ready'">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title">Ringkasan</h2>
+        <p class="hint" style="margin: 2px 0 0">
+          Untuk wallet ini saja — bukan angka seluruh kontrak.
+        </p>
+      </div>
+    </div>
+    <div class="card-body chip-row">
+      <span class="chip"><span class="dot" aria-hidden="true"></span>
+        <span x-text="counts.total + ' batch'"></span>
+      </span>
+      <span class="chip" data-state="ok"><span class="dot" aria-hidden="true"></span>
+        <span x-text="counts.active + ' izin aktif'"></span>
+      </span>
+      <span class="chip" data-state="warn"><span class="dot" aria-hidden="true"></span>
+        <span x-text="counts.waiting + ' menunggu izin'"></span>
+      </span>
+    </div>
+  </section>
+
+  <section class="card" x-show="mode() === 'ready'">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title">Izin per batch</h2>
+        <p class="hint" style="margin: 2px 0 0">
+          Status <span class="mono">COMPLETED</span> mengunci semuanya —
+          termasuk izin, jadi tombolnya hilang.
+        </p>
+      </div>
+    </div>
+
+    <p class="hint table-scroll-hint">
+      Geser tabel ke samping untuk melihat kolom dokter, izin, dan tombol aksi.
+    </p>
+
+    <div class="table-wrap" x-show="rows.length">
+      <table class="data-table data-table--wide">
+        <thead>
+          <tr>
+            <th scope="col">Batch</th>
+            <th scope="col">Status</th>
+            <th scope="col">Dokter</th>
+            <th scope="col">Izin</th>
+            <th scope="col">Aksi</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="row in rows" :key="row.tokenId">
+            <tr>
+              <td>
+                <a class="row-link" :href="'/rekam-medis/' + row.tokenId">
+                  <span x-text="'#' + row.tokenId"></span>
+                  <span x-text="row.patientName"></span>
+                </a>
+                <span class="hint mono" x-text="row.patientId"></span>
+              </td>
+              <td>
+                <span class="badge" :data-status="row.status" x-text="row.status"></span>
+              </td>
+              <td class="mono" :title="row.doctor || ''" x-text="short(row.doctor)"></td>
+              <td>
+                <span class="chip" :data-state="consentState(row)">
+                  <span class="dot" aria-hidden="true"></span>
+                  <span x-text="consentText(row)"></span>
+                </span>
+              </td>
+              <td>
+                <div class="tx-actions">
+                  <template x-if="row.canConsent && !row.consent">
+                    <button
+                      type="button"
+                      class="btn btn-primary btn-sm"
+                      :disabled="busy()"
+                      @click="grant(row)"
+                    >
+                      {{ icon('shield', 14) }} Izinkan
+                    </button>
+                  </template>
+                  <template x-if="row.canConsent && row.consent">
+                    <button
+                      type="button"
+                      class="btn btn-ghost btn-sm"
+                      :disabled="busy()"
+                      @click="revoke(row)"
+                    >
+                      Cabut izin
+                    </button>
+                  </template>
+                  <template x-if="!row.canConsent">
+                    <a class="btn btn-ghost btn-sm" :href="'/rekam-medis/' + row.tokenId">
+                      <span x-text="actionLabel(row)"></span>
+                    </a>
+                  </template>
+                </div>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="empty-state" x-show="!rows.length">
+      <strong>Belum ada baris untuk wallet ini</strong>
+      <span x-text="emptyText()"></span>
+    </div>
+  </section>
+
+  {# Admin: penjelasan peran akun demo (bukan data pribadi, hanya akun lokal). #}
+  <section class="card" x-show="role === 'ADMIN' && accounts.length">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title">Akun demo &amp; peran</h2>
+        <p class="hint" style="margin: 2px 0 0">
+          Dari <span class="mono">deployment.json</span>; peran dibaca dari
+          <span class="mono">getRole()</span>.
+        </p>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th scope="col">Akun</th>
+            <th scope="col">Alamat</th>
+            <th scope="col">Peran</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="account in accounts" :key="account.address">
+            <tr>
+              <td x-text="account.label"></td>
+              <td class="mono" :title="account.address">
+                <span x-text="short(account.address)"></span>
+              </td>
+              <td>
+                <span x-text="account.roleLabel"></span>
+                <span class="hint" x-show="account.ownedBatches"
+                  x-text="'· pemilik ' + account.ownedBatches + ' batch'"></span>
+                <span class="hint" x-show="account.assignedBatches"
+                  x-text="'· ' + account.assignedBatches + ' batch ditugaskan'"></span>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <h2 class="card-title">Catatan</h2>
+    </div>
+    <div class="card-body stack">
+      <div>
+        <p class="label" style="margin-bottom: 6px">Dokter terdaftar</p>
+        <div class="chip-row" x-show="doctors.length">
+          <template x-for="doctor in doctors" :key="doctor">
+            <span class="chip mono" :title="doctor" x-text="short(doctor)"></span>
+          </template>
+        </div>
+        <p class="hint" x-show="!doctors.length">
+          Belum ada dokter terdaftar di kontrak.
+        </p>
+      </div>
+
+      <ul class="list-check">
+        <li>
+          Izin mengatur hak <strong>menulis</strong>, bukan kerahasiaan baca.
+          Data medis tersimpan plaintext di chain lokal, jadi siapa pun yang
+          mengakses node tetap bisa membacanya.
+        </li>
+        <li>
+          Hanya pasien pemilik NFT yang bisa memberi atau mencabut izin.
+          Wallet lain akan ditolak kontrak dengan alasan
+          <em>Hanya pasien pemilik rekam medis</em>.
+        </li>
+        <li>
+          Batch berstatus <span class="mono">COMPLETED</span> tidak bisa diubah
+          lagi — tombol izin sengaja tidak ditampilkan.
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  {# Ringkasan error validasi dari server (mis. dizinkan lewat curl). #}
+  <div class="error-summary" role="alert" tabindex="-1" x-ref="summary" x-show="banner">
+    <p class="error-summary-title" x-text="banner"></p>
+    <ul class="error-summary-list" x-show="Object.keys(errors).length">
+      <template x-for="(message, field) in errors" :key="field">
+        <li x-text="message"></li>
+      </template>
+    </ul>
+  </div>
+
+  {{ tx_dialog() }}
+
+  {% call tx_panel() %}
+  <p class="hint" x-show="phase === 'pending'" style="margin: 0">
+    Transaksi sudah masuk ke node lokal. Biasanya selesai dalam 1–2 detik.
+  </p>
+
+  <div class="tx-actions" x-show="phase === 'success'">
+    <button type="button" class="btn btn-primary btn-sm" @click="refreshPage()">
+      {{ icon('refresh', 14) }} Muat ulang halaman
+    </button>
+    <button type="button" class="btn btn-ghost btn-sm" @click="clearTx()">
+      Tutup
+    </button>
+  </div>
+
+  <p class="hint" x-show="phase === 'success'" style="margin: 0">
+    Tabel izin di atas sudah dibaca ulang dari chain. Muat ulang halaman untuk
+    memperbarui angka di sidebar dan kartu lain.
+  </p>
+  {% endcall %}
+</div>
+{% endblock %}

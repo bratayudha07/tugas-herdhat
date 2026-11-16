@@ -93,13 +93,20 @@ sebagai penanda tangan transaksi. Semua aset pihak ketiga (Tailwind hasil
 build, Alpine, ethers, font) disimpan lokal, jadi demo tetap jalan tanpa
 internet.
 
-**Status:** tahap 1–4 selesai — kerangka + `/api/health`, dashboard dan
-daftar batch read-only, form **Buat Batch**, dan **aksi tulis di detail
-batch**: majukan status, simpan tindakan/obat, izin pasien, serta ganti dokter
-penanggung jawab. Semua transaksi ditandatangani MetaMask (validasi + dry-run
-di server, calldata dikirim balik ke browser). Halaman Wallet & Hak Akses
-masih placeholder dengan URL asli. Rencana per tahap ada di
-`docs/Rancangan UI - EHR Traceability.md` §11.
+**Status:** tahap 1–5 selesai — semua halaman modul sudah berfungsi: kerangka
++ `/api/health`, dashboard dan daftar batch read-only, form **Buat Batch**,
+**aksi tulis di detail batch** (majukan status, simpan tindakan/obat, izin
+pasien, ganti dokter), serta **Wallet & Transaksi** dan **Hak Akses**. Semua
+transaksi ditandatangani MetaMask (validasi + dry-run di server, calldata
+dikirim balik ke browser). Tata letak diuji sampai 375 px. Rencana per tahap
+ada di `docs/Rancangan UI - EHR Traceability.md` §11.
+
+- `/wallet` — alamat wallet, peran efektif (`getRole()` + kepemilikan NFT),
+  saldo/nonce/harga gas dari RPC lewat Web3.py, tombol salin/ganti akun,
+  dan riwayat transaksi sesi ini (`localStorage`, hanya yang ber-hash).
+- `/hak-akses` — izin dokter per batch, disaring sesuai peran: pasien
+  memberi/mencabut izin batch miliknya, dokter melihat status penugasan,
+  resepsionis mendapat tautan ganti dokter, admin melihat tabel akun demo.
 
 Hak tulis mengikuti kontrak apa adanya: dokter harus berperan **DOKTER**,
 tercatat sebagai dokter penanggung jawab batch, dan sudah diberi izin pasien;
@@ -146,6 +153,8 @@ Variabel lingkungan yang dibaca aplikasi:
 |---|---|
 | `GET /api/health` | status RPC, chain, blok, kontrak, `totalSupply` |
 | `GET /api/role?address=0x…` | peran satu alamat dari `getRole()` |
+| `GET /api/account?address=0x…` | peran efektif, saldo, nonce, harga gas, jumlah batch milik/ditugaskan |
+| `GET /api/access?address=0x…` | tabel izin per batch sesuai peran (+ tabel akun demo untuk admin) |
 | `GET /api/batch/{id}/context?address=0x…` | hak tulis satu wallet pada batch (dasar tombol di halaman detail) |
 | `POST /api/tx/build` | validasi + dry-run + calldata siap tanda tangan |
 | `GET /api/tx/{hash}` | status receipt: `pending` / `success` / `failed` |
