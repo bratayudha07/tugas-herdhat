@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+
+{% block title %}Halaman tidak ditemukan · EHR Traceability{% endblock %}
+{% block heading %}Halaman tidak ditemukan{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="empty-state">
+    <strong>404 — halaman ini tidak ada</strong>
+    <span>
+      Alamat <span class="mono">{{ path }}</span> tidak dikenal. Batch hanya
+      bisa dibuka lewat daftar rekam medis.
+    </span>
+    <p style="margin: 8px 0 0">
+      <a class="btn btn-ghost btn-sm" href="/">
+        {{ icon('arrow-right', 16) }} Kembali ke dashboard
+      </a>
+    </p>
+  </div>
+</div>
+{% endblock %}

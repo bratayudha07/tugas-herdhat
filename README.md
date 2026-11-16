@@ -80,16 +80,65 @@ contracts/EHRTraceability.sol   kontrak utama
 scripts/deploy.js               deploy + seeding peran
 scripts/seed-demo.js            data demo (4 batch, tahap berbeda)
 test/ehr.test.js                test kontrak
+web/                            aplikasi web (FastAPI + Jinja2)
 docs/                           modul, rancangan UI, rancangan kontrak
 app.py                          prototipe Streamlit lama (tidak dipakai lagi)
 ```
 
 ## Aplikasi web (UI)
 
-Aplikasi web untuk Pertemuan 11–12 (FastAPI + Jinja2 + Tailwind + Alpine.js +
-ethers.js, dengan Web3.py sebagai penghubung chain) **belum dibuat**.
-Rancangan lengkapnya ada di
-`docs/Rancangan UI - EHR Traceability.md`.
+Aplikasi web untuk Pertemuan 11–12: **FastAPI + Jinja2 + Tailwind CSS +
+Alpine.js**, dengan **Web3.py** sebagai penghubung chain dan **MetaMask**
+sebagai penanda tangan transaksi. Semua aset pihak ketiga (Tailwind hasil
+build, Alpine, ethers, font) disimpan lokal, jadi demo tetap jalan tanpa
+internet.
+
+**Status:** tahap 1 selesai — kerangka aplikasi, layout, token warna, dan
+`/api/health`. Halaman lain masih placeholder dengan URL asli. Rencana per
+tahap ada di `docs/Rancangan UI - EHR Traceability.md` §11.
+
+### Menjalankan
+
+```bash
+# 1. dependency Python (sekali saja)
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+# kalau .venv dibuat dengan uv (tidak ada pip di dalamnya):
+# uv pip install --python .venv/bin/python -r requirements.txt
+
+# 2. node + deploy (dua terminal terpisah)
+npx hardhat node
+npx hardhat run scripts/deploy.js --network localhost
+npx hardhat run scripts/seed-demo.js --network localhost   # opsional
+
+# 3. aplikasi web
+.venv/bin/python -m uvicorn web.main:app --reload --port 8000
+```
+
+Buka <http://127.0.0.1:8000>. Cek cepat status jaringan:
+<http://127.0.0.1:8000/api/health>.
+
+Variabel lingkungan yang dibaca aplikasi:
+
+| Variabel | Default | Guna |
+|---|---|---|
+| `EHR_RPC_URL` | `http://127.0.0.1:8545` | alamat RPC Hardhat |
+| `EHR_CACHE_TTL` | `15` | umur cache pembacaan chain (detik) |
+| `EHR_RPC_TIMEOUT` | `3` | timeout per request RPC (detik) |
+
+### Mengubah CSS
+
+`web/static/css/app.css` adalah **hasil build** dari
+`web/static/css/input.css` + `web/tailwind.config.js`. Kalau mengubah class
+Tailwind di template atau menambah komponen:
+
+```bash
+# Tailwind CLI standalone (tanpa Node), sekali unduh
+tailwindcss -c web/tailwind.config.js -i web/static/css/input.css \
+  -o web/static/css/app.css --minify
+```
+
+Commit `app.css` ikut, karena browser memakainya langsung.
 
 `app.py` adalah prototipe Streamlit lama dan **tidak kompatibel** dengan
 kontrak versi peran & consent (signature `createBatch` berubah).

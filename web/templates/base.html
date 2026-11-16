@@ -1,0 +1,136 @@
+{% from "partials/icons.html" import icon %}
+<!doctype html>
+<html
+  lang="id"
+  data-theme="light"
+  data-expected-chain-id="{{ health.expectedChainId or '' }}"
+  data-rpc-url="{{ rpc_url }}"
+>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}Dashboard · EHR Traceability{% endblock %}</title>
+    <meta
+      name="description"
+      content="Rekam medis pasien sebagai NFT soulbound — UI Praktikum Blockchain Pertemuan 11–12"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', path='css/app.css') }}"
+    />
+    <!-- wallet.js didaftarkan SEBELUM Alpine: Alpine memulai komponennya
+         lewat microtask, jadi listener `alpine:init` harus sudah terpasang. -->
+    <script defer src="{{ url_for('static', path='js/wallet.js') }}"></script>
+    <script
+      defer
+      src="{{ url_for('static', path='vendor/alpine.min.js') }}"
+    ></script>
+    {% block head_extra %}{% endblock %}
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Lewati ke konten</a>
+
+    <div class="app-shell" x-data="walletBar">
+      <aside class="sidebar">
+        <a class="brand" href="/">
+          <span class="brand-mark">{{ icon('shield', 20) }}</span>
+          <span>
+            <span class="brand-name">EHR Traceability</span>
+            <span class="brand-sub">Rekam Medis Pasien</span>
+          </span>
+        </a>
+
+        <nav class="nav" aria-label="Navigasi utama">
+          {% for group in NAV %}
+          <div class="nav-group">
+            <p class="nav-group-title">{{ group.title }}</p>
+            {% for item in group['items'] %}
+            <a class="nav-item" href="{{ item.href }}"
+              {%- if is_active(path, item.href) %} aria-current="page"{% endif %}>
+              {{ icon(item.icon, 18) }}<span>{{ item.label }}</span>
+            </a>
+            {% endfor %}
+          </div>
+          {% endfor %}
+        </nav>
+
+        <div class="sidebar-foot">
+          <span
+            class="chip"
+            data-state="{{ 'ok' if health.rpc and health.contract else ('warn' if health.rpc else 'bad') }}"
+          >
+            <span class="dot" aria-hidden="true"></span>
+            {% if not health.rpc %} RPC mati {% elif not health.contract %}
+            Kontrak tidak ada {% else %} Chain siap {% endif %}
+          </span>
+          <dl>
+            <dt>RPC</dt>
+            <dd class="mono" title="{{ rpc_url }}">{{ rpc_display }}</dd>
+            <dt>Chain</dt>
+            <dd class="mono">{{ health.chainId or '—' }}</dd>
+            <dt>Blok</dt>
+            <dd class="mono">{{ health.block | fmt_number }}</dd>
+            <dt>Kontrak</dt>
+            <dd class="mono" title="{{ contract_address }}">
+              {{ contract_address | short_addr }}
+            </dd>
+          </dl>
+        </div>
+      </aside>
+
+      <div class="main">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Praktikum Blockchain · Pertemuan 11–12</p>
+            <h1 class="page-title">{% block heading %}Ringkasan{% endblock %}</h1>
+          </div>
+
+          <div class="topbar-tools">
+            <span
+              class="chip"
+              data-state="{{ 'ok' if health.rpc and (not health.expectedChainId or health.chainId == health.expectedChainId) else 'bad' }}"
+            >
+              <span class="dot" aria-hidden="true"></span>
+              {{ chain_label }}
+            </span>
+
+            <template x-if="wrongNetwork()">
+              <span class="chip" data-state="warn">
+                <span class="dot" aria-hidden="true"></span>
+                Jaringan wallet salah
+              </span>
+            </template>
+
+            <template x-if="address">
+              <span class="chip" data-state="ok">
+                <span class="dot" aria-hidden="true"></span>
+                <span class="mono" x-text="short()"></span>
+              </span>
+            </template>
+
+            <template x-if="!address">
+              <button
+                type="button"
+                class="btn btn-ghost btn-sm"
+                @click="connect()"
+                :disabled="busy"
+              >
+                <span x-text="busy ? 'Menyambungkan…' : 'Sambungkan wallet'"></span>
+              </button>
+            </template>
+          </div>
+        </header>
+
+        <main id="main" class="content">
+          {% block content %}{% endblock %}
+        </main>
+
+        <footer class="footer">
+          EHR Traceability · Praktikum Blockchain Pertemuan 11–12 ·
+          <a href="/api/health">/api/health</a> ·
+          <a href="/api/docs">/api/docs</a>
+        </footer>
+      </div>
+    </div>
+  </body>
+</html>

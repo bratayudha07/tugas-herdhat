@@ -1,7 +1,7 @@
 ---
 type: design-doc
 project: EHR Traceability (Praktikum Blockchain Pertemuan 11–12)
-status: rancangan — belum diimplementasikan
+status: fase 1 selesai (kerangka + status jaringan), fase 2–5 jalan
 last_updated: 2026-11-16
 ---
 
@@ -9,8 +9,9 @@ last_updated: 2026-11-16
 
 Dokumen ini rancangan UI untuk tugas **Pertemuan 11–12: Implementasi UI**.
 Isinya keputusan desain, struktur halaman, pemetaan ke smart contract, dan
-rencana kerja. **Belum ada kode aplikasi yang diubah** dan `contracts/*.sol`
-tidak disentuh.
+rencana kerja. Status: **fase 1 sudah jalan** (kerangka FastAPI + layout +
+`/api/health`), fase 2–5 menyusul. `contracts/*.sol` tidak disentuh lagi
+sejak rancangan kontrak diterapkan.
 
 ---
 
@@ -67,13 +68,19 @@ tugas ini UI-nya ikut dinilai, jadi pindah ke web app biasa.
 | Backend | **FastAPI + Uvicorn** | async, ringan, auto-reload, dokumentasi API gratis |
 | Blockchain | **Web3.py 8** (sudah terpasang) | **wajib modul**; dipakai untuk baca data + simulasi transaksi |
 | Template | **Jinja2** (bawaan FastAPI) | server-rendered, detail per-ID bisa jadi URL asli |
-| Styling | **Tailwind CSS** (Play CDN, token via config) | modern tanpa build step |
+| Styling | **Tailwind CSS 3** (CLI standalone, hasil build di-commit) | modern, CSS akhir cuma ~16 KB, tanpa Node & tanpa kompilasi di browser |
 | Interaksi | **Alpine.js 3** | dialog, filter, state wallet — cukup 15 baris per komponen |
 | Wallet | **ethers.js 6 (UMD, BrowserProvider)** | MetaMask tanda tangan transaksi; private key tidak pernah ke server |
 | Grafik | **CSS bar chart** (tanpa library) | 5 kategori, label langsung, ringan untuk laptop low-spec |
 
-**Tanpa Node/npm/build.** Semua aset pihak ketiga di-*vendor* ke
-`static/vendor/` supaya demo tetap jalan walau internet mati.
+**Tanpa Node/npm.** Tailwind dijalankan sekali sebagai binary standalone
+untuk menghasilkan `web/static/css/app.css`, lalu hasil build di-commit — jadi
+browser hanya memuat CSS statis (bukan JIT Tailwind seperti Play CDN yang
+berat di laptop low-spec). Alpine, ethers, dan font juga di-*vendor*/self-host
+supaya demo tetap jalan walau internet mati.
+
+Font yang dipakai: **Figtree** 500/600/700, **Noto Sans** 400/500/700,
+**JetBrains Mono** 400/500 — subset latin (total ±232 KB woff2).
 
 Kalau nanti mau lebih "SPA", jalur upgrade-nya React + Vite + API yang sama —
 tapi itu butuh Node, dua proses, dan waktu setup lebih lama. Untuk tugas ini
@@ -88,6 +95,7 @@ Hardhat/
 ├─ deployment.json       # alamat kontrak hasil deploy
 ├─ web/
 │  ├─ main.py            # FastAPI app, daftar route
+│  ├─ config.py          # path, ABI, alamat kontrak, RPC, TTL cache
 │  ├─ chain.py           # Web3 provider, kontrak, cache ringan
 │  ├─ tx.py              # build calldata, simulasi, baca receipt
 │  ├─ view.py            # label status, format ETH/waktu, short address
@@ -100,11 +108,14 @@ Hardhat/
 │  │  ├─ patient_new.html
 │  │  ├─ wallet.html
 │  │  └─ access.html
+│  ├─ tailwind.config.js # tema (warna → CSS variable)
 │  └─ static/
-│     ├─ css/app.css     # token + komponen
-│     ├─ js/wallet.js    # koneksi MetaMask (ethers)
-│     ├─ js/tx.js        # kirim tx + polling status
-│     └─ vendor/         # tailwind, alpine, ethers
+│     ├─ css/input.css   # sumber Tailwind + token + komponen
+│     ├─ css/app.css     # HASIL BUILD, ikut di-commit
+│     ├─ fonts/          # woff2 self-hosted (Figtree/Noto Sans/JetBrains)
+│     ├─ js/wallet.js    # koneksi MetaMask (alamat, chain, saldo)
+│     ├─ js/tx.js        # kirim tx + polling status (fase 3)
+│     └─ vendor/         # alpine.min.js, ethers.umd.min.js
 └─ app.py                # Streamlit lama: simpan dulu sebagai referensi
 ```
 
@@ -580,10 +591,12 @@ menyiapkan `to` + `data`; tanda tangan di MetaMask.
 
 ## 9. Catatan implementasi
 
-- **Tanpa build step**: Tailwind Play CDN untuk demo, tapi simpan salinan
-  `tailwind.min.js`, `alpine.min.js`, `ethers.umd.min.js` di
-  `static/vendor/` supaya offline-safe. Kalau mau "rapi", nanti bisa ganti
-  ke Tailwind CLI standalone (satu binary, tanpa Node).
+- **Tanpa build step di sisi user**: Tailwind Play CDN **tidak** dipakai.
+  CSS dibangun sekali dengan Tailwind CLI standalone (`tailwindcss -c
+  web/tailwind.config.js -i web/static/css/input.css -o
+  web/static/css/app.css --minify`) dan hasilnya di-commit. Efeknya: satu
+  request CSS 16 KB, tanpa kompilasi di browser — jauh lebih ringan untuk
+  laptop 4 GB. Binary CLI tidak ikut repo (bisa diunduh ulang).
 - **Token warna** ditaruh sebagai CSS variables di `app.css`, Tailwind
   `theme.extend.colors` memetakan ke `var(--…)` — jadi dark mode cuma
   ganti blok `[data-theme="dark"]`, bukan dua set class.
@@ -631,7 +644,7 @@ Cek sebelum bilang selesai:
 |---|---|---|
 | **0a** ✅ | Kontrak peran & consent + test | `npx hardhat test` 29 lulus |
 | **0b** ✅ | Seed peran di `deploy.js`, deploy + `seed-demo.js` | 4 batch demo, 4 akun berperan benar |
-| 1 | Scaffold FastAPI, `chain.py`, base layout, token, `/api/health` | halaman kosong tapi status jaringan benar |
+| **1** ✅ | Scaffold FastAPI, `chain.py`, base layout, token, `/api/health` | dashboard menampilkan chain 31337, kontrak, `totalSupply`, dokter; RPC mati → banner |
 | 2 | Dashboard + Daftar Batch (read-only) | data asli dari kontrak tampil, filter jalan |
 | 3 | Form Buat Batch + `tx.py` + MetaMask + tx panel | satu transaksi `createBatch` sukses dari UI |
 | 4 | Detail + majukan status + tindakan + consent | alur 3 peran jalan dari UI |
