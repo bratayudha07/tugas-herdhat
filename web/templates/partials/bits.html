@@ -63,3 +63,81 @@
   {%- endfor -%}
 </ol>
 {%- endmacro %}
+
+
+{#
+  Dialog konfirmasi transaksi — dipakai form Buat Batch dan aksi detail.
+  Isi ringkasan datang dari server (`tx.label` + `tx.summary`), jadi tidak ada
+  teks transaksi yang disusun ulang di JavaScript.
+#}
+{% macro tx_dialog(title="Konfirmasi transaksi") -%}
+<template x-if="confirmOpen">
+  <div class="dialog-backdrop" @click.self="closeConfirm()" @keydown.escape.window="closeConfirm()">
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="tx-dialog-title">
+      <h2 class="dialog-title" id="tx-dialog-title">{{ title }}</h2>
+      <p class="hint dialog-intro">
+        Dry-run di server lolos. Periksa ringkasan ini, lalu tanda tangan di
+        MetaMask.
+      </p>
+
+      <p class="dialog-label" x-text="tx ? tx.label : ''"></p>
+
+      <dl class="summary-list">
+        <template x-for="row in (tx && tx.summary ? tx.summary : [])" :key="row.label">
+          <div class="summary-row">
+            <dt x-text="row.label"></dt>
+            <dd x-text="row.value"></dd>
+          </div>
+        </template>
+      </dl>
+
+      <p class="hint dialog-fn" x-show="tx">
+        Fungsi kontrak: <span class="mono" x-text="tx ? tx.action : ''"></span>
+      </p>
+
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" @click="closeConfirm()">
+          Batal
+        </button>
+        <button type="button" class="btn btn-primary" x-ref="confirmBtn" @click="send()">
+          {{ icon('send', 16) }} Buka MetaMask
+        </button>
+      </div>
+    </div>
+  </div>
+</template>
+{%- endmacro %}
+
+
+{#
+  Kartu status transaksi. Halaman bisa menambah baris sendiri lewat
+  `{% raw %}{% call tx_panel() %}…{% endcall %}{% endraw %}` — mis. tautan ke
+  detail batch atau tombol muat ulang.
+#}
+{% macro tx_panel() -%}
+<template x-if="panelVisible()">
+  <section
+    class="card tx-panel"
+    x-ref="panel"
+    :data-tone="panelTone()"
+    role="status"
+    aria-live="polite"
+  >
+    <div class="card-body stack">
+      <p class="tx-headline" x-text="statusText()"></p>
+      <p class="mono tx-hash" x-show="hash" x-text="hash"></p>
+
+      {% if caller is defined %}{{ caller() }}{% endif %}
+
+      <div
+        class="tx-actions"
+        x-show="['failed', 'rejected', 'timeout', 'error'].includes(phase)"
+      >
+        <button type="button" class="btn btn-ghost btn-sm" @click="retry()">
+          {{ icon('refresh', 14) }} Kirim ulang
+        </button>
+      </div>
+    </div>
+  </section>
+</template>
+{%- endmacro %}

@@ -93,15 +93,23 @@ sebagai penanda tangan transaksi. Semua aset pihak ketiga (Tailwind hasil
 build, Alpine, ethers, font) disimpan lokal, jadi demo tetap jalan tanpa
 internet.
 
-**Status:** tahap 1–3 selesai — kerangka + `/api/health`, dashboard dan
-daftar batch read-only, dan form **Buat Batch** yang mengirim transaksi lewat
-MetaMask (validasi + dry-run di server, tanda tangan di wallet). Halaman
-Wallet & Hak Akses masih placeholder dengan URL asli. Rencana per tahap ada
-di `docs/Rancangan UI - EHR Traceability.md` §11.
+**Status:** tahap 1–4 selesai — kerangka + `/api/health`, dashboard dan
+daftar batch read-only, form **Buat Batch**, dan **aksi tulis di detail
+batch**: majukan status, simpan tindakan/obat, izin pasien, serta ganti dokter
+penanggung jawab. Semua transaksi ditandatangani MetaMask (validasi + dry-run
+di server, calldata dikirim balik ke browser). Halaman Wallet & Hak Akses
+masih placeholder dengan URL asli. Rencana per tahap ada di
+`docs/Rancangan UI - EHR Traceability.md` §11.
 
-Syarat demo form Buat Batch: wallet MetaMask berperan **resepsionis** di
-chain 31337 (akun #1 hasil `scripts/deploy.js`). Server tidak pernah memegang
-private key — ia hanya menyiapkan `to` + `data`.
+Hak tulis mengikuti kontrak apa adanya: dokter harus berperan **DOKTER**,
+tercatat sebagai dokter penanggung jawab batch, dan sudah diberi izin pasien;
+resepsionis hanya bisa mengganti dokter; pasien pemilik NFT memberi/mencabut
+izin. Hak itu dibaca ulang dari chain tiap akun berganti, jadi tombol yang
+tampil tidak pernah menawarkan transaksi yang pasti revert.
+
+Syarat demo: wallet MetaMask di chain 31337 dengan akun hasil
+`scripts/deploy.js` (resepsionis, dokter, pasien). Server tidak pernah
+memegang private key — ia hanya menyiapkan `to` + `data`.
 
 ### Menjalankan
 
@@ -138,6 +146,7 @@ Variabel lingkungan yang dibaca aplikasi:
 |---|---|
 | `GET /api/health` | status RPC, chain, blok, kontrak, `totalSupply` |
 | `GET /api/role?address=0x…` | peran satu alamat dari `getRole()` |
+| `GET /api/batch/{id}/context?address=0x…` | hak tulis satu wallet pada batch (dasar tombol di halaman detail) |
 | `POST /api/tx/build` | validasi + dry-run + calldata siap tanda tangan |
 | `GET /api/tx/{hash}` | status receipt: `pending` / `success` / `failed` |
 | `GET /api/docs` | dokumentasi otomatis FastAPI |
@@ -151,9 +160,16 @@ Contoh `POST /api/tx/build`:
     "doctor": "0x3C44…", "metadata": "" } }
 ```
 
-Balasannya `{ "to": …, "data": "0x…", "label": …, "predictedTokenId": 5 }`.
-Kalau ditolak: `400` + `{ "error": "Hanya resepsionis", "fields": {} }` —
-alasan revert kontrak ditampilkan apa adanya.
+Balasannya `{ "to": …, "data": "0x…", "label": …, "summary": […],
+"predictedTokenId": 5 }` — `summary` adalah daftar `{label, value}` yang
+ditampilkan di dialog konfirmasi, jadi teks transaksi tidak disusun ulang di
+JavaScript. Kalau ditolak: `400` + `{ "error": "Hanya resepsionis", "fields": {} }`
+— alasan revert kontrak ditampilkan apa adanya.
+
+`action` yang dikenal: `createBatch`, `updateStatus`, `updateTreatment`,
+`setConsent`, `assignDoctor`. Semuanya memakai bentuk payload yang sama
+(`from` + `args`), dan server selalu menjalankan dry-run dulu supaya
+transaksi yang pasti revert tidak sampai ditandatangani.
 
 ### Mengubah CSS
 

@@ -17,7 +17,7 @@ from web3 import Web3
 from web3.exceptions import ContractLogicError, TransactionNotFound
 from web3.logs import DISCARD
 
-from . import chain, config, validate
+from . import chain, config, validate, view
 
 # ABI error string standar Solidity: 0x08c379a0 + offset + panjang + isi.
 _REASON_SELECTOR = "0x08c379a0"
@@ -104,6 +104,85 @@ def auto_metadata() -> str:
 
 
 # --------------------------------------------------------------------------
+# Kerangka umum: dry-run → calldata
+# --------------------------------------------------------------------------
+
+
+def _prepare(contract, fn_name: str, args: list, sender: str):
+    """Jalankan fungsi sebagai `sender` tanpa mengirim transaksi.
+
+    Kalau ini revert, transaksi sungguhan juga akan revert — jadi user tidak
+    perlu menandatangani transaksi yang pasti gagal. Nilai baliknya dipakai
+    untuk data yang hanya diketahui setelah eksekusi (mis. token ID baru).
+    """
+    try:
+        return getattr(contract.functions, fn_name)(*args).call({"from": sender})
+    except ContractLogicError as exc:
+        raise TxError(revert_reason(exc)) from exc
+    except ValueError as exc:
+        raise TxError(revert_reason(exc)) from exc
+
+
+def _rows(*pairs) -> list[dict]:
+    """Ringkasan transaksi: list `{label, value}`, urutan dipertahankan.
+
+    Nilai kosong ditulis "—" supaya dialog tidak menampilkan baris menggantung.
+    """
+    return [
+        {"label": label, "value": "—" if value in (None, "") else str(value)}
+        for label, value in pairs
+    ]
+
+
+def _signed(
+    contract,
+    action: str,
+    fn_name: str,
+    args: list,
+    sender: str,
+    *,
+    label: str,
+    summary: list[dict],
+    predicted_token_id: int | None = None,
+    extra: dict | None = None,
+) -> dict:
+    """Payload yang dikirim ke wallet: `to` + `data`, tanpa private key."""
+    payload = {
+        "id": uuid4().hex,
+        "action": action,
+        "from": sender,
+        "to": config.contract_address(),
+        "data": contract.encode_abi(fn_name, args=args),
+        "chainId": chain.health()["chainId"],
+        "label": label,
+        "summary": summary,
+        "predictedTokenId": predicted_token_id,
+    }
+    if extra:
+        payload.update(extra)
+    return payload
+
+
+def _token_arg(payload: dict) -> int:
+    token_id = validate.token_id_arg((payload.get("args") or {}).get("tokenId"))
+    if token_id is None:
+        raise TxError("Token ID tidak valid.")
+    return token_id
+
+
+def _batch_or_error(contract, token_id: int) -> dict:
+    """Baca batch; alasan revert kontrak diteruskan apa adanya."""
+    try:
+        return chain.batch_dict(contract.functions.getBatch(token_id).call())
+    except (ContractLogicError, ValueError) as exc:
+        raise TxError(revert_reason(exc)) from exc
+
+
+def _current_status(batch: dict) -> str:
+    return view.STATUS_ORDER[batch["status"]]
+
+
+# --------------------------------------------------------------------------
 # createBatch
 # --------------------------------------------------------------------------
 
@@ -130,37 +209,177 @@ def build_create_batch(payload: dict) -> dict:
         metadata,
     ]
 
-    # Dry-run: kalau ini revert, transaksi akan revert juga — jadi jangan
-    # sampai user menandatangani transaksi yang pasti gagal.
-    try:
-        predicted = contract.functions.createBatch(*args).call({"from": sender})
-    except ContractLogicError as exc:
-        raise TxError(revert_reason(exc)) from exc
-    except ValueError as exc:
-        raise TxError(revert_reason(exc)) from exc
+    predicted = _prepare(contract, "createBatch", args, sender)
 
-    return {
-        "id": uuid4().hex,
-        "action": "createBatch",
-        "from": sender,
-        "to": config.contract_address(),
-        "data": contract.encode_abi("createBatch", args=args),
-        "chainId": chain.health()["chainId"],
-        "label": f"Buat batch {fields['patientName']}",
-        "predictedTokenId": int(predicted),
-        "metadata": metadata,
-        "summary": {
-            "patientId": fields["patientId"],
-            "patientName": fields["patientName"],
-            "complaint": fields["complaint"],
-            "doctor": fields["doctor"],
-            "patient": fields["patient"],
-        },
-    }
+    return _signed(
+        contract,
+        "createBatch",
+        "createBatch",
+        args,
+        sender,
+        label=f"Buat batch {fields['patientName']}",
+        summary=_rows(
+            ("Pasien", fields["patientName"]),
+            ("ID pasien", fields["patientId"]),
+            ("Keluhan", fields["complaint"]),
+            ("Dokter", fields["doctor"]),
+            ("Wallet pasien", fields["patient"]),
+            ("Token ID (simulasi)", f"#{int(predicted)}"),
+        ),
+        predicted_token_id=int(predicted),
+        extra={"metadata": metadata},
+    )
+
+
+# --------------------------------------------------------------------------
+# updateStatus / updateTreatment / setConsent / assignDoctor
+# --------------------------------------------------------------------------
+
+
+def build_update_status(payload: dict) -> dict:
+    """Majukan status tepat satu tahap — kontrak menolak lompatan."""
+    _require_rpc()
+    sender = _sender(payload)
+    contract = _require_contract()
+    token_id = _token_arg(payload)
+
+    batch = _batch_or_error(contract, token_id)
+    target_index = batch["status"] + 1
+    if target_index >= len(view.STATUS_ORDER):
+        raise TxError("Rekam medis sudah selesai — status tidak bisa dimajukan lagi.")
+
+    target = view.STATUS_ORDER[target_index]
+    args = [token_id, target_index]
+    _prepare(contract, "updateStatus", args, sender)
+
+    return _signed(
+        contract,
+        "updateStatus",
+        "updateStatus",
+        args,
+        sender,
+        label=f"Majukan status #{token_id} ke {target}",
+        summary=_rows(
+            ("Batch", f"#{token_id} · {batch['patientName']}"),
+            ("Status sekarang", _current_status(batch)),
+            ("Status baru", target),
+        ),
+    )
+
+
+def build_update_treatment(payload: dict) -> dict:
+    """Simpan tindakan & obat. Minimal salah satu harus terisi."""
+    _require_rpc()
+    sender = _sender(payload)
+    contract = _require_contract()
+    token_id = _token_arg(payload)
+
+    fields, errors = validate.validate_treatment(payload.get("args") or {})
+    if errors:
+        raise TxError(validate.error_summary(errors), fields=errors)
+
+    batch = _batch_or_error(contract, token_id)
+    args = [token_id, fields["treatment"], fields["medicine"]]
+    _prepare(contract, "updateTreatment", args, sender)
+
+    return _signed(
+        contract,
+        "updateTreatment",
+        "updateTreatment",
+        args,
+        sender,
+        label=f"Simpan tindakan #{token_id}",
+        summary=_rows(
+            ("Batch", f"#{token_id} · {batch['patientName']}"),
+            ("Tindakan", fields["treatment"]),
+            ("Obat", fields["medicine"]),
+        ),
+    )
+
+
+def build_set_consent(payload: dict) -> dict:
+    """Pasien memberi / mencabut izin untuk dokter penanggung jawab."""
+    _require_rpc()
+    sender = _sender(payload)
+    contract = _require_contract()
+    token_id = _token_arg(payload)
+
+    granted = validate.bool_arg((payload.get("args") or {}).get("granted"))
+    if granted is None:
+        raise TxError("Status izin harus true atau false.")
+
+    batch = _batch_or_error(contract, token_id)
+    args = [token_id, granted]
+    _prepare(contract, "setConsent", args, sender)
+
+    verb = "Izinkan" if granted else "Cabut izin"
+    return _signed(
+        contract,
+        "setConsent",
+        "setConsent",
+        args,
+        sender,
+        label=f"{verb} dokter batch #{token_id}",
+        summary=_rows(
+            ("Batch", f"#{token_id} · {batch['patientName']}"),
+            ("Dokter", batch["doctor"]),
+            ("Izin setelah ini", "Aktif — dokter boleh menulis" if granted else "Nonaktif — dokter tidak boleh menulis"),
+        ),
+    )
+
+
+def build_assign_doctor(payload: dict) -> dict:
+    """Resepsionis mengganti dokter penanggung jawab.
+
+    Kontrak mencabut izin dokter lama. Peringatan itu ikut di ringkasan
+    supaya user tahu konsekuensinya sebelum tanda tangan.
+    """
+    _require_rpc()
+    sender = _sender(payload)
+    contract = _require_contract()
+    token_id = _token_arg(payload)
+
+    requested = validate.address_arg((payload.get("args") or {}).get("doctor"))
+    if requested is None:
+        raise TxError("Alamat dokter tidak valid.")
+
+    registry = {address.lower(): address for address in chain.doctors()}
+    doctor = registry.get(requested.lower())
+    if doctor is None:
+        raise TxError(
+            "Alamat dokter tidak terdaftar di kontrak.",
+            fields={"doctor": "Pilih dokter dari daftar getDoctors()."},
+        )
+
+    batch = _batch_or_error(contract, token_id)
+    if batch["doctor"] and batch["doctor"].lower() == doctor.lower():
+        raise TxError("Dokter itu sudah menjadi penanggung jawab batch ini.")
+
+    args = [token_id, doctor]
+    _prepare(contract, "assignDoctor", args, sender)
+
+    return _signed(
+        contract,
+        "assignDoctor",
+        "assignDoctor",
+        args,
+        sender,
+        label=f"Ganti dokter penanggung jawab #{token_id}",
+        summary=_rows(
+            ("Batch", f"#{token_id} · {batch['patientName']}"),
+            ("Dokter sekarang", batch["doctor"]),
+            ("Dokter baru", doctor),
+            ("Izin dokter lama", "Dicabut otomatis oleh kontrak"),
+        ),
+    )
 
 
 BUILDERS = {
     "createBatch": build_create_batch,
+    "updateStatus": build_update_status,
+    "updateTreatment": build_update_treatment,
+    "setConsent": build_set_consent,
+    "assignDoctor": build_assign_doctor,
 }
 
 
@@ -171,6 +390,68 @@ def build(payload: dict) -> dict:
     if builder is None:
         raise TxError(f"Aksi transaksi tidak dikenal: {action or '(kosong)'}.")
     return builder(payload)
+
+
+# --------------------------------------------------------------------------
+# Konteks otorisasi satu batch
+# --------------------------------------------------------------------------
+
+
+def batch_context(token_id: int, address: str) -> dict | None:
+    """Apa yang boleh dilakukan `address` pada batch ini.
+
+    Dibaca ulang tiap kali wallet berganti akun, jadi tombol yang tampil
+    selalu sesuai state chain — bukan tebakan dari halaman yang sudah basi.
+
+    `None` = batch tidak ada (404). TxError 503 = RPC/kontrak belum siap.
+    """
+    _require_rpc()
+    contract = _require_contract()
+
+    info = chain.role_of(address)
+    if info is None:
+        raise TxError("Alamat wallet tidak valid.")
+
+    try:
+        batch = chain.batch_dict(contract.functions.getBatch(token_id).call())
+    except (ContractLogicError, ValueError):
+        return None
+
+    role = info["role"]
+    is_owner = batch["patient"].lower() == info["address"].lower()
+
+    # Peran NONE + pemilik NFT = pasien. Aturan ini sama dengan topbar,
+    # supaya label peran tidak berbeda antar halaman.
+    if role == "NONE" and is_owner:
+        role = "PATIENT"
+
+    is_assigned = bool(batch["doctor"]) and (
+        batch["doctor"].lower() == info["address"].lower()
+    )
+    consent = None
+    if batch["doctor"]:
+        consent = chain.consent_of(token_id, batch["doctor"])
+
+    completed = batch["status"] >= len(view.STATUS_ORDER) - 1
+    doctor_may_write = role == "DOCTOR" and is_assigned and consent is True
+
+    return {
+        "tokenId": token_id,
+        "status": _current_status(batch),
+        "nextStatus": view.next_status(batch["status"]),
+        "completed": completed,
+        "doctor": batch["doctor"],
+        "patient": batch["patient"],
+        "role": role,
+        "roleLabel": view.role_label(role),
+        "isOwner": is_owner,
+        "isAssignedDoctor": is_assigned,
+        "consent": consent,
+        "canAdvance": doctor_may_write and not completed,
+        "canTreat": doctor_may_write and not completed,
+        "canConsent": role == "PATIENT" and not completed and bool(batch["doctor"]),
+        "canAssignDoctor": role == "RECEPTIONIST" and not completed,
+    }
 
 
 # --------------------------------------------------------------------------

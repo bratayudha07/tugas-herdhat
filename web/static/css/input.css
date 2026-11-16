@@ -184,6 +184,12 @@
       animation-duration: 0.01ms !important;
     }
   }
+
+  /* Alpine menyembunyikan elemen ber-x-cloak sebelum komponen siap; tanpa
+     aturan ini chip peran sempat berkedip kosong saat halaman dimuat. */
+  [x-cloak] {
+    display: none !important;
+  }
 }
 
 /* ============================================================
@@ -1335,6 +1341,46 @@
     font-weight: 600;
   }
 
+  .dialog-intro {
+    margin: 4px 0 12px;
+  }
+
+  .dialog-label {
+    margin: 0 0 10px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+
+  .dialog-fn {
+    margin: 12px 0 0;
+  }
+
+  /* Ringkasan transaksi dari server: label kiri, nilai kanan. */
+  .summary-list {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+    font-size: 14px;
+  }
+
+  .summary-row {
+    display: grid;
+    grid-template-columns: 118px minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+  }
+
+  .summary-row dt {
+    padding-top: 1px;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  .summary-row dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
   .dialog-actions {
     display: flex;
     justify-content: flex-end;
@@ -1383,6 +1429,48 @@
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
+  }
+
+  /* --- detail: kartu aksi per peran --- */
+
+  .action-block {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+  }
+
+  .action-title {
+    font-size: 15px;
+    font-weight: 600;
+  }
+
+  /* Tombol di dalam blok aksi tidak perlu selebar kartu. */
+  .action-block > .btn {
+    align-self: flex-start;
+  }
+
+  .action-note {
+    margin: 0;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    font-size: 14px;
+    color: var(--text-muted);
+  }
+
+  .action-note strong {
+    color: var(--text);
+  }
+
+  .action-note[data-tone="warn"] {
+    background: var(--banner-warning-bg);
+    border-color: var(--banner-warning-border);
+    color: var(--text);
   }
 
   /* --- responsif --- */

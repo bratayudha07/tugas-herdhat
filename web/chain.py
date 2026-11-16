@@ -155,7 +155,7 @@ def contract_meta() -> dict | None:
         return None
 
 
-def _batch_dict(raw) -> dict:
+def batch_dict(raw) -> dict:
     """Struct `PatientBatch` → dict. Urutan field mengikuti kontrak."""
     return {
         "tokenId": int(raw[0]),
@@ -184,7 +184,7 @@ def _read_batches() -> list[dict]:
 
     total = int(contract.functions.totalSupply().call())
     return [
-        _batch_dict(contract.functions.getBatch(token_id).call())
+        batch_dict(contract.functions.getBatch(token_id).call())
         for token_id in range(1, total + 1)
     ]
 
@@ -208,7 +208,7 @@ def batch_detail(token_id: int) -> dict | None:
         return None
 
     try:
-        batch = _batch_dict(contract.functions.getBatch(token_id).call())
+        batch = batch_dict(contract.functions.getBatch(token_id).call())
         history = contract.functions.getHistory(token_id).call()
     except Exception:
         return None
@@ -218,6 +218,26 @@ def batch_detail(token_id: int) -> dict | None:
         for entry in history
     ]
     return batch
+
+
+def consent_of(token_id: int, doctor: str) -> bool | None:
+    """`consent[tokenId][doctor]` — None kalau tidak bisa dibaca.
+
+    Izin mengatur hak menulis. UI memakainya untuk memutuskan tombol mana
+    yang boleh tampil, bukan untuk menyembunyikan data.
+    """
+    contract = get_contract()
+    if contract is None or not doctor:
+        return None
+
+    try:
+        return bool(
+            contract.functions.consent(
+                token_id, Web3.to_checksum_address(doctor)
+            ).call()
+        )
+    except Exception:
+        return None
 
 
 def doctors() -> list[str]:

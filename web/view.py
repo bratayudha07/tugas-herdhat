@@ -123,8 +123,13 @@ def is_active(path: str, href: str) -> bool:
         return path == "/"
     if path == href:
         return True
-    # halaman detail /rekam-medis/{id} tetap menyalakan "Daftar Batch"
-    return href == "/rekam-medis" and path.startswith("/rekam-medis/")
+    # halaman detail /rekam-medis/{id} tetap menyalakan "Daftar Batch";
+    # form /rekam-medis/baru punya item navigasi sendiri.
+    return (
+        href == "/rekam-medis"
+        and path.startswith("/rekam-medis/")
+        and path != "/rekam-medis/baru"
+    )
 
 
 # --------------------------------------------------------------------------

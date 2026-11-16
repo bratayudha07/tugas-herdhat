@@ -4,6 +4,10 @@
  *
  * Server hanya menyiapkan `to` + `data`; tanda tangan terjadi di wallet.
  * Private key tidak pernah dikirim ke server maupun disimpan di file ini.
+ *
+ * `txMachine()` dipakai dua halaman (Buat Batch & Detail) supaya alur status
+ * tidak ditulis dua kali. Komponen halaman tinggal menempel field-nya sendiri
+ * lewat `Object.assign(txMachine(), {...})`.
  */
 (() => {
   const POLL_INTERVAL = 2000;
@@ -78,69 +82,30 @@
     return true;
   }
 
-  document.addEventListener("alpine:init", () => {
-    Alpine.data("createBatchForm", () => ({
-      // isi form
-      patientId: "",
-      patientName: "",
-      complaint: "",
-      patient: "",
-      doctor: "",
-      metadata: "",
-      showMeta: false,
-
-      // mesin status
+  /**
+   * State & aksi transaksi yang dipakai bersama.
+   *
+   * `prepare()` hanya meminta calldata ke server (validasi + dry-run);
+   * `send()` menyerahkan `to` + `data` ke wallet. Halaman yang memakai mesin
+   * ini wajib punya `x-ref="summary"` (ringkasan error) dan `x-ref="panel"`
+   * (kartu status) supaya fokus/scroll bisa diarahkan.
+   */
+  function txMachine() {
+    return {
       phase: "idle", // idle | building | ready | signing | pending | success | failed | rejected | timeout | error | invalid
       errors: {},
       banner: "",
-      role: null,
-      roleLoading: false,
       tx: null,
       hash: "",
       result: null,
-      lastTokenId: null,
       confirmOpen: false,
       pollTimer: null,
       startedAt: 0,
 
-      init() {
-        // $watch dipakai supaya form ikut berubah saat user ganti akun di
-        // MetaMask, tanpa polling.
-        this.$watch(
-          () => wallet().address,
-          (address) => this.loadRole(address),
-        );
-        this.loadRole(wallet().address);
-      },
-
-      destroy() {
-        clearTimeout(this.pollTimer);
-      },
-
-      // --- data turunan -------------------------------------------------
-
-      address() {
-        return wallet().address;
-      },
-
-      short(addr) {
-        if (!addr) return "—";
-        return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
-      },
-
-      gate() {
-        if (!wallet().hasProvider) return "no-provider";
-        if (!wallet().address) return "no-wallet";
-        if (this.roleLoading || !this.role) return "checking";
-        return this.role.role === "RECEPTIONIST" ? "open" : "blocked";
-      },
+      // --- turunan ----------------------------------------------------
 
       busy() {
         return ["building", "signing", "pending"].includes(this.phase);
-      },
-
-      complaintLeft() {
-        return 280 - this.complaint.length;
       },
 
       statusText() {
@@ -156,7 +121,7 @@
           case "rejected":
             return "Kamu membatalkan transaksi di MetaMask.";
           case "timeout":
-            return "Belum dikonfirmasi setelah 60 detik. Cek daftar batch — kalau sudah masuk, datanya muncul.";
+            return "Belum dikonfirmasi setelah 60 detik. Cek data di halaman — kalau sudah masuk, isinya berubah.";
           case "error":
             return this.banner;
           default:
@@ -179,48 +144,31 @@
         );
       },
 
-      // --- peran --------------------------------------------------------
-
-      async loadRole(address) {
-        if (!address) {
-          this.role = null;
-          return;
-        }
-
-        this.roleLoading = true;
-        try {
-          const response = await getJSON(
-            `/api/role?address=${encodeURIComponent(address)}`,
-          );
-          this.role = response.ok ? response.data : null;
-        } finally {
-          this.roleLoading = false;
-        }
+      revealPanel() {
+        this.$nextTick(() =>
+          this.$refs.panel?.scrollIntoView({ behavior: "smooth", block: "nearest" }),
+        );
       },
 
-      // --- alur transaksi ----------------------------------------------
+      // --- alur -------------------------------------------------------
 
-      async submit() {
-        if (this.gate() !== "open" || this.busy()) return;
+      /**
+       * Minta server memvalidasi & menyiapkan calldata, lalu buka dialog.
+       * Mengembalikan `true` kalau dialog konfirmasi terbuka.
+       */
+      async prepare(action, args = {}) {
+        if (this.busy()) return false;
 
         this.errors = {};
         this.banner = "";
         this.result = null;
         this.hash = "";
-        this.lastTokenId = null;
         this.phase = "building";
 
         const response = await postJSON("/api/tx/build", {
-          action: "createBatch",
+          action,
           from: wallet().address,
-          args: {
-            patientId: this.patientId,
-            patientName: this.patientName,
-            complaint: this.complaint,
-            patient: this.patient,
-            doctor: this.doctor,
-            metadata: this.showMeta ? this.metadata : "",
-          },
+          args,
         });
 
         if (!response.ok) {
@@ -228,25 +176,20 @@
           this.errors = response.data.fields || {};
           this.banner = response.data.error || "Gagal menyiapkan transaksi.";
           this.$nextTick(() => this.$refs.summary?.focus());
-          return;
+          return false;
         }
 
         this.tx = response.data;
         this.phase = "ready";
         this.confirmOpen = true;
         this.$nextTick(() => this.$refs.confirmBtn?.focus());
+        return true;
       },
 
       closeConfirm() {
         this.confirmOpen = false;
         this.phase = this.tx ? "ready" : "idle";
         this.$nextTick(() => this.$refs.submitBtn?.focus());
-      },
-
-      revealPanel() {
-        this.$nextTick(() =>
-          this.$refs.panel?.scrollIntoView({ behavior: "smooth", block: "nearest" }),
-        );
       },
 
       async send() {
@@ -261,6 +204,7 @@
           this.phase = "error";
           this.banner =
             "Jaringan wallet tidak cocok dengan RPC. Ganti jaringan di MetaMask, lalu ulangi.";
+          this.revealPanel();
           return;
         }
 
@@ -310,20 +254,24 @@
         }
 
         this.result = response.data;
-        if (response.data.state === "success") {
-          this.phase = "success";
-          this.lastTokenId = response.data.tokenId;
-        } else {
-          this.phase = "failed";
+        try {
+          // Refresh konteks dulu, baru tandai sukses: begitu panel bilang
+          // "berhasil", tombol di kartu aksi sudah sesuai state chain.
+          if (response.data.state === "success") await this.onTxSuccess(this.result);
+        } finally {
+          this.phase = response.data.state === "success" ? "success" : "failed";
         }
         this.revealPanel();
       },
+
+      /** Kait halaman: dipanggil sekali setelah transaksi sukses masuk blok. */
+      async onTxSuccess() {},
 
       // Kirim ulang transaksi yang sudah disiapkan (mis. setelah user menolak
       // di MetaMask) — tidak perlu validasi ulang, calldata masih sama.
       retry() {
         if (!this.tx) {
-          this.reset();
+          this.clearTx();
           return;
         }
         this.banner = "";
@@ -332,26 +280,256 @@
         this.$nextTick(() => this.$refs.confirmBtn?.focus());
       },
 
-      reset() {
+      clearTx() {
         clearTimeout(this.pollTimer);
-        this.patientId = "";
-        this.patientName = "";
-        this.complaint = "";
-        this.patient = "";
-        this.doctor = "";
-        this.metadata = "";
-        this.showMeta = false;
-        this.errors = {};
-        this.banner = "";
         this.tx = null;
         this.hash = "";
         this.result = null;
-        this.lastTokenId = null;
+        this.errors = {};
+        this.banner = "";
+        this.confirmOpen = false;
         this.phase = "idle";
       },
-    }));
+    };
+  }
+
+  document.addEventListener("alpine:init", () => {
+    Alpine.data("createBatchForm", () =>
+      Object.assign(txMachine(), {
+        // isi form
+        patientId: "",
+        patientName: "",
+        complaint: "",
+        patient: "",
+        doctor: "",
+        metadata: "",
+        showMeta: false,
+
+        role: null,
+        roleLoading: false,
+        lastTokenId: null,
+
+        init() {
+          // $watch dipakai supaya form ikut berubah saat user ganti akun di
+          // MetaMask, tanpa polling.
+          this.$watch(
+            () => wallet().address,
+            (address) => this.loadRole(address),
+          );
+          this.loadRole(wallet().address);
+        },
+
+        destroy() {
+          this.clearTx();
+        },
+
+        // --- data turunan ---------------------------------------------
+
+        address() {
+          return wallet().address;
+        },
+
+        short(addr) {
+          if (!addr) return "—";
+          return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+        },
+
+        gate() {
+          if (!wallet().hasProvider) return "no-provider";
+          if (!wallet().address) return "no-wallet";
+          if (this.roleLoading || !this.role) return "checking";
+          return this.role.role === "RECEPTIONIST" ? "open" : "blocked";
+        },
+
+        complaintLeft() {
+          return 280 - this.complaint.length;
+        },
+
+        // --- peran ----------------------------------------------------
+
+        async loadRole(address) {
+          if (!address) {
+            this.role = null;
+            return;
+          }
+
+          this.roleLoading = true;
+          try {
+            const response = await getJSON(
+              `/api/role?address=${encodeURIComponent(address)}`,
+            );
+            this.role = response.ok ? response.data : null;
+          } finally {
+            this.roleLoading = false;
+          }
+        },
+
+        // --- alur -----------------------------------------------------
+
+        submit() {
+          if (this.gate() !== "open" || this.busy()) return;
+
+          this.lastTokenId = null;
+          return this.prepare("createBatch", {
+            patientId: this.patientId,
+            patientName: this.patientName,
+            complaint: this.complaint,
+            patient: this.patient,
+            doctor: this.doctor,
+            metadata: this.showMeta ? this.metadata : "",
+          });
+        },
+
+        async onTxSuccess(result) {
+          this.lastTokenId = result.tokenId;
+        },
+
+        reset() {
+          this.clearTx();
+          this.patientId = "";
+          this.patientName = "";
+          this.complaint = "";
+          this.patient = "";
+          this.doctor = "";
+          this.metadata = "";
+          this.showMeta = false;
+          this.lastTokenId = null;
+        },
+      }),
+    );
+
+    /**
+     * Aksi tulis di halaman detail.
+     *
+     * Hak tulis tidak ditebak dari data yang sudah dirender: setiap kali akun
+     * berganti (atau setelah transaksi sukses) status otorisasi dibaca ulang
+     * dari `/api/batch/{id}/context`, sehingga tombol yang tampil selalu
+     * sesuai state chain.
+     */
+    Alpine.data("batchActions", () =>
+      Object.assign(txMachine(), {
+        tokenId: 0,
+        treatment: "",
+        medicine: "",
+        doctor: "",
+
+        ctx: null,
+        ctxError: "",
+        loading: false,
+
+        init() {
+          const el = this.$el;
+          this.tokenId = Number(el.dataset.tokenId || 0);
+          this.treatment = el.dataset.treatment || "";
+          this.medicine = el.dataset.medicine || "";
+
+          this.$watch(
+            () => wallet().address,
+            () => this.loadContext(),
+          );
+          this.loadContext();
+        },
+
+        destroy() {
+          this.clearTx();
+        },
+
+        // --- konteks otorisasi ----------------------------------------
+
+        async loadContext() {
+          if (!wallet().address) {
+            this.ctx = null;
+            this.ctxError = "";
+            return;
+          }
+
+          this.loading = true;
+          try {
+            const response = await getJSON(
+              `/api/batch/${this.tokenId}/context?address=${encodeURIComponent(
+                wallet().address,
+              )}`,
+            );
+            if (response.ok) {
+              this.ctx = response.data;
+              this.ctxError = "";
+            } else {
+              this.ctx = null;
+              this.ctxError =
+                response.data.error || "Gagal membaca hak akses batch ini.";
+            }
+          } finally {
+            this.loading = false;
+          }
+        },
+
+        mode() {
+          if (!wallet().hasProvider) return "no-provider";
+          if (!wallet().address) return "no-wallet";
+          if (this.ctxError) return "error";
+          if (this.loading && !this.ctx) return "checking";
+          if (!this.ctx) return "checking";
+          if (this.ctx.completed) return "completed";
+          if (this.ctx.role === "DOCTOR") return "doctor";
+          if (this.ctx.role === "PATIENT") return "patient";
+          if (this.ctx.role === "RECEPTIONIST") return "receptionist";
+          return "viewer";
+        },
+
+        short(addr) {
+          if (!addr) return "—";
+          return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+        },
+
+        treatmentLeft() {
+          return 280 - this.treatment.length;
+        },
+
+        medicineLeft() {
+          return 280 - this.medicine.length;
+        },
+
+        // --- aksi -----------------------------------------------------
+
+        advance() {
+          return this.prepare("updateStatus", { tokenId: this.tokenId });
+        },
+
+        saveTreatment() {
+          return this.prepare("updateTreatment", {
+            tokenId: this.tokenId,
+            treatment: this.treatment,
+            medicine: this.medicine,
+          });
+        },
+
+        setConsent(granted) {
+          return this.prepare("setConsent", {
+            tokenId: this.tokenId,
+            granted: Boolean(granted),
+          });
+        },
+
+        assignDoctor() {
+          return this.prepare("assignDoctor", {
+            tokenId: this.tokenId,
+            doctor: this.doctor,
+          });
+        },
+
+        refreshPage() {
+          window.location.reload();
+        },
+
+        async onTxSuccess() {
+          // Server sudah membuang cache bacaan setelah receipt sukses, jadi
+          // konteks baru di sini mencerminkan status/izin setelah transaksi.
+          await this.loadContext();
+        },
+      }),
+    );
   });
 
-  // Dipakai juga oleh halaman detail di fase 4.
+  // Dipakai halaman lain kalau butuh helper yang sama.
   window.ehrTx = { ensureChain, postJSON, getJSON, shortHash, fmtNumber };
 })();

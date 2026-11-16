@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% from "partials/icons.html" import icon %}
-{% from "partials/bits.html" import status_badge, stepper, chain_banner %}
+{% from "partials/bits.html" import status_badge, stepper, chain_banner, tx_dialog, tx_panel %}
+
+{% block head_scripts %}
+<script defer src="{{ url_for('static', path='js/tx.js') }}"></script>
+{% endblock %}
 
 {% block title %}{{ batch.patientName }} · Batch #{{ batch.tokenId }} · EHR Traceability{% endblock %}
 {% block heading %}Detail Batch{% endblock %}
@@ -66,55 +70,313 @@
   </section>
 </div>
 
-<div class="grid-two">
-  <section class="card">
-    <div class="card-header">
-      <h2 class="card-title">NFT &amp; penugasan</h2>
-    </div>
-    <div class="card-body">
-      <dl class="def-list">
-        <dt>Token</dt>
-        <dd class="mono">#{{ batch.tokenId }} · ERC-721 soulbound</dd>
-        <dt>Pemilik</dt>
-        <dd class="mono" title="{{ batch.patient }}">{{ batch.patient }}</dd>
-        <dt>Dokter</dt>
-        <dd class="mono" title="{{ batch.doctor }}">{{ batch.doctor }}</dd>
-        <dt>Dibuat oleh</dt>
-        <dd class="mono" title="{{ batch.createdBy }}">{{ batch.createdBy }}</dd>
-        <dt>Dibuat</dt>
-        <dd>{{ batch.createdAt | fmt_datetime }}</dd>
-      </dl>
-    </div>
-  </section>
+{# Aksi tulis butuh data wallet di browser, jadi seluruh blok ini satu
+   komponen Alpine. Data awal (tindakan/obat) ikut dikirim supaya dokter bisa
+   mengoreksi catatan sebelumnya, bukan menulis dari nol. #}
+<div
+  x-data="batchActions"
+  data-token-id="{{ batch.tokenId }}"
+  data-treatment="{{ batch.treatment }}"
+  data-medicine="{{ batch.medicine }}"
+>
+  <div class="grid-two">
+    <section class="card">
+      <div class="card-header">
+        <h2 class="card-title">NFT &amp; penugasan</h2>
+      </div>
+      <div class="card-body">
+        <dl class="def-list">
+          <dt>Token</dt>
+          <dd class="mono">#{{ batch.tokenId }} · ERC-721 soulbound</dd>
+          <dt>Pemilik</dt>
+          <dd class="mono" title="{{ batch.patient }}">{{ batch.patient }}</dd>
+          <dt>Dokter</dt>
+          <dd class="mono" title="{{ batch.doctor }}">{{ batch.doctor }}</dd>
+          <dt>Izin dokter</dt>
+          <dd>
+            {% if consent %}
+            <span class="chip" data-state="ok">
+              <span class="dot" aria-hidden="true"></span> Aktif
+            </span>
+            {% elif consent is none %}
+            <span class="hint">Tidak terbaca dari chain</span>
+            {% else %}
+            <span class="chip" data-state="warn">
+              <span class="dot" aria-hidden="true"></span> Belum ada
+            </span>
+            {% endif %}
+          </dd>
+          <dt>Dibuat oleh</dt>
+          <dd class="mono" title="{{ batch.createdBy }}">{{ batch.createdBy }}</dd>
+          <dt>Dibuat</dt>
+          <dd>{{ batch.createdAt | fmt_datetime }}</dd>
+        </dl>
+      </div>
+    </section>
 
-  <section class="card">
-    <div class="card-header">
-      <div>
-        <h2 class="card-title">Aksi per peran</h2>
-        <p class="hint" style="margin: 2px 0 0">
-          Majukan status, isi tindakan, izin dokter.
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <h2 class="card-title">Aksi per peran</h2>
+          <p class="hint" style="margin: 2px 0 0">
+            Hak tulis = peran + penugasan + izin pasien.
+          </p>
+        </div>
+        <span class="chip" x-cloak x-show="ctx">
+          <span class="dot" aria-hidden="true"></span>
+          <span x-text="ctx ? ctx.roleLabel : ''"></span>
+        </span>
+      </div>
+
+      <div class="card-body stack">
+        {# Ringkasan error validasi dari server — fokus pindah ke sini. #}
+        <div
+          class="error-summary"
+          role="alert"
+          tabindex="-1"
+          x-ref="summary"
+          x-show="banner"
+        >
+          <p class="error-summary-title" x-text="banner"></p>
+          <ul class="error-summary-list" x-show="Object.keys(errors).length">
+            <template x-for="(message, field) in errors" :key="field">
+              <li x-text="message"></li>
+            </template>
+          </ul>
+        </div>
+
+        {# --- gerbang wallet --- #}
+        <div class="banner" data-tone="warning" role="status" x-show="mode() === 'no-provider'">
+          <span class="banner-icon">{{ icon('wallet', 18) }}</span>
+          <div>
+            <h3>MetaMask tidak terdeteksi</h3>
+            <p>
+              Aksi tulis butuh wallet untuk menandatangani transaksi. Data di
+              halaman ini tetap bisa dibaca.
+            </p>
+          </div>
+        </div>
+
+        <div class="banner" data-tone="info" role="status" x-show="mode() === 'no-wallet'">
+          <span class="banner-icon">{{ icon('wallet', 18) }}</span>
+          <div>
+            <h3>Wallet belum tersambung</h3>
+            <p>
+              Sambungkan wallet lewat tombol di kanan atas. Setelah terhubung,
+              tombol yang muncul mengikuti peran akun itu.
+            </p>
+          </div>
+        </div>
+
+        <p class="action-note" x-show="mode() === 'checking'">
+          Memeriksa peran wallet dan izin dokter…
+        </p>
+
+        <div class="banner" data-tone="danger" role="alert" x-show="mode() === 'error'">
+          <span class="banner-icon">{{ icon('alert', 18) }}</span>
+          <div>
+            <h3>Hak akses tidak bisa dibaca</h3>
+            <p x-text="ctxError"></p>
+          </div>
+        </div>
+
+        {# --- COMPLETED: semua aksi hilang --- #}
+        <div class="banner" data-tone="info" role="status" x-show="mode() === 'completed'">
+          <span class="banner-icon">{{ icon('check', 18) }}</span>
+          <div>
+            <h3>Rekam medis selesai</h3>
+            <p>
+              Status <span class="mono">COMPLETED</span> bersifat permanen.
+              Kontrak menolak perubahan status, tindakan, maupun izin setelah
+              titik ini — riwayat di bawah adalah catatan akhirnya.
+            </p>
+          </div>
+        </div>
+
+        {# --- dokter penanggung jawab --- #}
+        <div class="stack" x-show="mode() === 'doctor'">
+          <p class="action-note" x-show="ctx && !ctx.isAssignedDoctor">
+            Batch ini ditangani dokter lain
+            (<span class="mono" x-text="ctx ? short(ctx.doctor) : '—'"></span>),
+            jadi wallet ini hanya bisa membaca.
+          </p>
+
+          <p class="action-note" data-tone="warn" x-show="ctx && ctx.isAssignedDoctor && ctx.consent !== true">
+            <strong>Menunggu izin pasien.</strong> Kontrak mewajibkan
+            <span class="mono">consent</span> sebelum dokter boleh menulis.
+            Minta pasien membuka halaman ini dan menekan
+            <em>Izinkan dokter</em>.
+          </p>
+
+          <div class="action-block" x-show="ctx && ctx.canAdvance">
+            <h3 class="action-title">Majukan status</h3>
+            <p class="hint">
+              Berikutnya:
+              <strong x-text="ctx ? ctx.nextStatus : '—'"></strong> — kontrak
+              hanya menerima satu tahap per transaksi.
+            </p>
+            <button
+              type="button"
+              class="btn btn-primary btn-sm"
+              :disabled="busy()"
+              @click="advance()"
+            >
+              {{ icon('arrow-right', 14) }}
+              Majukan ke <span x-text="ctx ? ctx.nextStatus : ''"></span>
+            </button>
+          </div>
+
+          <form class="action-block" x-show="ctx && ctx.canTreat" @submit.prevent="saveTreatment()">
+            <h3 class="action-title">Tindakan &amp; obat</h3>
+            <div class="field">
+              <label class="label" for="treatment">Tindakan</label>
+              <textarea
+                class="input input-area"
+                id="treatment"
+                rows="3"
+                maxlength="280"
+                placeholder="Pemeriksaan fisik, diagnosis, tindakan…"
+                x-model="treatment"
+                :aria-invalid="errors.treatment ? 'true' : 'false'"
+                aria-describedby="treatment-count"
+              ></textarea>
+              <div class="field-foot">
+                <p class="counter" id="treatment-count">
+                  <span x-text="treatment.length"></span>/280
+                </p>
+              </div>
+            </div>
+            <div class="field">
+              <label class="label" for="medicine">Obat</label>
+              <textarea
+                class="input input-area"
+                id="medicine"
+                rows="2"
+                maxlength="280"
+                placeholder="Nama obat, dosis, aturan pakai…"
+                x-model="medicine"
+                :aria-invalid="errors.medicine ? 'true' : 'false'"
+                aria-describedby="medicine-count"
+              ></textarea>
+              <div class="field-foot">
+                <p class="counter" id="medicine-count">
+                  <span x-text="medicine.length"></span>/280
+                </p>
+              </div>
+            </div>
+            <p class="hint">
+              Isi minimal salah satu. Nilai lama ditimpa seluruhnya — kosongkan
+              field yang memang tidak dipakai.
+            </p>
+            <button type="submit" class="btn btn-primary btn-sm" :disabled="busy()">
+              {{ icon('check', 14) }} Simpan tindakan
+            </button>
+          </form>
+        </div>
+
+        {# --- pasien pemilik NFT --- #}
+        <div class="stack" x-show="mode() === 'patient'">
+          <p class="action-note" x-show="ctx && ctx.consent">
+            Dokter
+            <span class="mono" x-text="ctx ? short(ctx.doctor) : '—'"></span>
+            sudah punya izin menulis untuk rekam medis ini. Cabut kalau izin itu
+            tidak lagi kamu berikan.
+          </p>
+          <p class="action-note" data-tone="warn" x-show="ctx && !ctx.consent">
+            Dokter
+            <span class="mono" x-text="ctx ? short(ctx.doctor) : '—'"></span>
+            belum bisa menulis. Tanpa izinmu, transaksi dokter akan ditolak
+            kontrak dengan alasan <em>Pasien belum memberi izin</em>.
+          </p>
+          <div class="tx-actions">
+            <button
+              type="button"
+              class="btn btn-primary btn-sm"
+              x-show="ctx && !ctx.consent"
+              :disabled="busy()"
+              @click="setConsent(true)"
+            >
+              {{ icon('shield', 14) }} Izinkan dokter
+            </button>
+            <button
+              type="button"
+              class="btn btn-ghost btn-sm"
+              x-show="ctx && ctx.consent"
+              :disabled="busy()"
+              @click="setConsent(false)"
+            >
+              Cabut izin
+            </button>
+          </div>
+          <p class="hint">
+            Izin mengatur hak menulis, bukan kerahasiaan baca: data di chain
+            lokal tetap bisa dibaca siapa pun yang mengakses node.
+          </p>
+        </div>
+
+        {# --- resepsionis --- #}
+        <form class="action-block" x-show="mode() === 'receptionist'" @submit.prevent="assignDoctor()">
+          <div class="field">
+            <label class="label" for="new-doctor">Ganti dokter penanggung jawab</label>
+            <select
+              class="input"
+              id="new-doctor"
+              x-model="doctor"
+              :aria-invalid="errors.doctor ? 'true' : 'false'"
+              aria-describedby="new-doctor-hint new-doctor-error"
+            >
+              <option value="">Pilih dokter…</option>
+              {% for address in doctors %}
+              <option value="{{ address }}" title="{{ address }}">
+                {{ address | short_addr(10, 6) }}
+              </option>
+              {% endfor %}
+            </select>
+            <p class="hint" id="new-doctor-hint">
+              Sekarang:
+              <span class="mono" x-text="ctx ? short(ctx.doctor) : '—'"></span>.
+              Izin dokter sebelumnya dicabut otomatis oleh kontrak, jadi pasien
+              perlu menyetujui dokter baru sebelum dokter itu bisa menulis.
+            </p>
+            <p class="field-error" id="new-doctor-error" x-show="errors.doctor" x-text="errors.doctor"></p>
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm" :disabled="busy() || !doctor">
+            {{ icon('shield', 14) }} Simpan dokter
+          </button>
+        </form>
+
+        {# --- admin / tanpa peran --- #}
+        <p class="action-note" x-show="mode() === 'viewer'">
+          Wallet ini berperan
+          <strong x-text="ctx ? ctx.roleLabel : 'tanpa peran'"></strong>, jadi
+          halaman hanya bisa dibaca. Aksi tulis milik dokter penanggung jawab
+          (dengan izin pasien), pasien pemilik NFT, dan resepsionis.
         </p>
       </div>
-      <span class="chip" data-state="warn">
-        <span class="dot" aria-hidden="true"></span>
-        Tahap 4
-      </span>
-    </div>
-    <div class="card-body stack">
-      <p style="margin: 0; color: var(--text-muted)">
-        Halaman ini baru menampilkan data. Tombol aksi akan mengikuti peran
-        wallet:
-      </p>
-      <ul class="list-check">
-        <li><strong>Dokter</strong> (ditugaskan) — majukan status, isi tindakan
-          &amp; obat, hanya jika pasien sudah memberi izin.</li>
-        <li><strong>Pasien</strong> (pemilik NFT) — izinkan / cabut izin dokter.</li>
-        <li><strong>Resepsionis</strong> — ganti dokter penanggung jawab
-          (izin dokter lama otomatis dicabut).</li>
-        <li><strong>Admin / tanpa peran</strong> — hanya membaca.</li>
-      </ul>
-    </div>
-  </section>
+    </section>
+  </div>
+
+  {{ tx_dialog() }}
+
+  {% call tx_panel() %}
+  <p class="hint" x-show="phase === 'pending'" style="margin: 0">
+    Transaksi sudah masuk ke node lokal. Biasanya selesai dalam 1–2 detik.
+  </p>
+
+  <div class="tx-actions" x-show="phase === 'success'">
+    <button type="button" class="btn btn-primary btn-sm" @click="refreshPage()">
+      {{ icon('refresh', 14) }} Muat ulang halaman
+    </button>
+    <button type="button" class="btn btn-ghost btn-sm" @click="clearTx()">
+      Tutup
+    </button>
+  </div>
+
+  <p class="hint" x-show="phase === 'success'" style="margin: 0">
+    Tombol di kartu aksi sudah diperbarui dari chain. Kartu data medis dan
+    riwayat masih versi sebelum transaksi — muat ulang untuk melihat semuanya.
+  </p>
+  {% endcall %}
 </div>
 
 <section class="card">

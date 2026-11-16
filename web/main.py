@@ -4,7 +4,8 @@ Jalankan dari root repo `Hardhat/`:
 
     uvicorn web.main:app --reload --port 8000
 
-Fase 3: form Buat Batch + transaksi lewat MetaMask. Halaman lain masih stub.
+Fase 4: detail batch dengan aksi tulis per peran (status, tindakan, izin,
+ganti dokter). Halaman Wallet & Hak Akses masih stub.
 """
 
 from __future__ import annotations
@@ -209,7 +210,7 @@ def batch_list(
 
 @app.get("/rekam-medis/{token_id:int}", response_class=HTMLResponse)
 def batch_detail(request: Request, token_id: int, refresh: int = 0):
-    """Detail read-only. Aksi tulis menyusul di tahap 4."""
+    """Detail batch + aksi tulis sesuai peran wallet (diselesaikan di client)."""
     if refresh:
         chain.refresh()
 
@@ -222,7 +223,13 @@ def batch_detail(request: Request, token_id: int, refresh: int = 0):
             status_code=404,
         )
 
-    return _page(request, "batch_detail.html", batch=batch)
+    return _page(
+        request,
+        "batch_detail.html",
+        batch=batch,
+        consent=chain.consent_of(token_id, batch["doctor"]),
+        doctors=chain.doctors(),
+    )
 
 
 @app.get("/rekam-medis/baru", response_class=HTMLResponse)
@@ -293,6 +300,20 @@ def api_role(address: str = ""):
         )
 
     info["label"] = view.role_label(info["roleIndex"])
+    return JSONResponse(info)
+
+
+@app.get("/api/batch/{token_id}/context")
+def api_batch_context(token_id: int, address: str = ""):
+    """Hak tulis wallet ini pada satu batch — dasar tombol di halaman detail."""
+    try:
+        info = tx.batch_context(token_id, address)
+    except tx.TxError as exc:
+        return JSONResponse({"error": exc.message}, status_code=exc.status)
+
+    if info is None:
+        return JSONResponse({"error": "Batch tidak ditemukan."}, status_code=404)
+
     return JSONResponse(info)
 
 

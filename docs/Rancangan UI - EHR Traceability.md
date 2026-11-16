@@ -1,7 +1,7 @@
 ---
 type: design-doc
 project: EHR Traceability (Praktikum Blockchain Pertemuan 11–12)
-status: fase 1–3 selesai (status jaringan, dashboard, daftar batch, form Buat Batch), fase 4–5 jalan
+status: fase 1–4 selesai (status jaringan, dashboard, daftar batch, form Buat Batch, aksi tulis detail), fase 5 jalan
 last_updated: 2026-11-16
 ---
 
@@ -9,11 +9,11 @@ last_updated: 2026-11-16
 
 Dokumen ini rancangan UI untuk tugas **Pertemuan 11–12: Implementasi UI**.
 Isinya keputusan desain, struktur halaman, pemetaan ke smart contract, dan
-rencana kerja. Status: **fase 1–3 sudah jalan** (kerangka FastAPI + layout +
-`/api/health`, dashboard + daftar batch read-only, lalu form Buat Batch yang
-mengirim transaksi lewat MetaMask), fase 4–5 menyusul. `contracts/*.sol`
-tidak disentuh lagi
-sejak rancangan kontrak diterapkan.
+rencana kerja. Status: **fase 1–4 sudah jalan** (kerangka FastAPI + layout +
+`/api/health`, dashboard + daftar batch read-only, form Buat Batch yang
+mengirim transaksi lewat MetaMask, lalu aksi tulis di detail batch: majukan
+status, simpan tindakan/obat, izin pasien, ganti dokter), fase 5 menyusul.
+`contracts/*.sol` tidak disentuh lagi sejak rancangan kontrak diterapkan.
 
 ---
 
@@ -648,8 +648,9 @@ Cek sebelum bilang selesai:
 | **0b** ✅ | Seed peran di `deploy.js`, deploy + `seed-demo.js` | 4 batch demo, 4 akun berperan benar |
 | **1** ✅ | Scaffold FastAPI, `chain.py`, base layout, token, `/api/health` | dashboard menampilkan chain 31337, kontrak, `totalSupply`, dokter; RPC mati → banner |
 | **2** ✅ | Dashboard + Daftar Batch (read-only) | data asli dari kontrak tampil, filter jalan |
-| 3 ✅ | Form Buat Batch + `tx.py` + MetaMask + tx panel | satu transaksi `createBatch` sukses dari UI |
-| 4 | Detail + majukan status + tindakan + consent | alur 3 peran jalan dari UI |
+| **3** ✅ | Form Buat Batch + `tx.py` + MetaMask + tx panel | satu transaksi `createBatch` sukses dari UI |
+| **4** ✅ | Detail + majukan status + tindakan + consent | alur 3 peran jalan dari UI |
+| 5 | Wallet + Hak Akses + responsif + README | semua halaman modul lengkap |
 
 Catatan fase 2: halaman detail `/rekam-medis/{token_id}` ikut dibuat dalam
 versi **read-only** (stepper, data medis, NFT & penugasan, riwayat) supaya
@@ -677,7 +678,36 @@ Catatan fase 3:
   punya MetaMask): validasi kosong → 5 error, dialog konfirmasi, sukses
   blok 48 gas 641.508 token #5, penolakan MetaMask (`4001`) → pesan
   "Kamu membatalkan transaksi di MetaMask.", admin → empty-state peran.
-| 5 | Wallet + Hak Akses + responsif + README | semua halaman modul lengkap |
+
+Catatan fase 4:
+- Aksi tulis mengikuti syarat kontrak: peran `DOCTOR` + penugasan dokter +
+  `consent[tokenId][doctor]`. Hak itu dibaca ulang dari
+  `GET /api/batch/{id}/context?address=…` setiap akun berganti atau setelah
+  transaksi sukses, jadi UI tidak menawarkan tombol yang pasti revert.
+- Builder baru di `web/tx.py`: `updateStatus` (target otomatis `status + 1`),
+  `updateTreatment`, `setConsent`, `assignDoctor` — semuanya tetap lewat
+  dry-run `.call({from})`, dan alasan revert kontrak ditampilkan apa adanya
+  (`Pasien belum memberi izin`, `Bukan dokter penanggung jawab`,
+  `Hanya pasien pemilik rekam medis`, …).
+- Aturan tindakan/obat ikut di `web/validate.py` (minimal salah satu terisi,
+  maks 280 karakter per field) — pesan inline tetap datang dari server.
+- `tx.js` dipecah: `txMachine()` (state, dialog, panel, polling) dipakai form
+  Buat Batch **dan** komponen `batchActions`; dialog + panel jadi macro Jinja
+  di `partials/bits.html`, jadi markup tidak diduplikasi antar halaman.
+- Status `COMPLETED` → semua aksi tulis hilang, diganti banner permanen.
+  Form ganti dokter memberi tahu bahwa izin dokter lama dicabut kontrak dan
+  pasien perlu menyetujui dokter baru.
+- Setelah sukses, panel menawarkan **Muat ulang halaman**: tombol aksi sudah
+  diperbarui dari chain lebih dulu (transaksi baru ditandai "berhasil"
+  setelah konteks di-refresh), sedangkan kartu data medis & riwayat masih
+  versi sebelum transaksi sampai halaman dimuat ulang.
+- Uji UI: izin pasien (beri & cabut), majukan status, simpan tindakan, ganti
+  dokter, tolak MetaMask, dokter tanpa izin (caption disabled), admin
+  read-only, batch `COMPLETED`, tanpa MetaMask, dan overflow 1440/900/768/375
+  px untuk halaman detail + form.
+- Perbaikan kecil: nav "Buat Batch" tidak lagi menyala bersama "Daftar Batch"
+  (aturan `is_active` sebelumnya menganggap semua `/rekam-medis/*` sebagai
+  halaman detail).
 
 Aturan: satu fase selesai & dites, baru lanjut. Jangan bangun semua
 sekaligus lalu debug di akhir.
