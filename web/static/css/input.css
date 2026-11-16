@@ -1154,6 +1154,18 @@
     overflow-wrap: anywhere;
   }
 
+  /* Tombol buka-tutup kunci akun demo (elemen <details> bawaan). */
+  .data-table summary {
+    cursor: pointer;
+    color: var(--primary-strong);
+    font-size: 14px;
+  }
+
+  .data-table summary:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
+
   /* Tautan baris tabel: teks biasa, bukan tombol. */
   .row-link {
     display: block;

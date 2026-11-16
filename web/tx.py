@@ -522,6 +522,57 @@ def account_overview(address: str) -> dict:
     }
 
 
+def demo_overview() -> dict:
+    """Akun demo testnet: peran, saldo, dan private key untuk dicoba sendiri.
+
+    Kunci private ikut dikirim **dengan sengaja**. Akun ini dibuat khusus untuk
+    demo di testnet: nilainya nol, dan pengunjung butuh kuncinya untuk mengimpor
+    akun ke MetaMask supaya tombol tulis bisa dipakai. Ini pola khusus demo —
+    jangan pernah ditiru untuk akun yang menyimpan nilai nyata.
+    """
+    _require_rpc()
+
+    deployment = config.load_deployment()
+    accounts = deployment.get("demoAccounts", {}) or {}
+    keys = config.demo_keys()
+    batches = chain.list_batches() or []
+
+    rows = []
+    for key, address in accounts.items():
+        info = chain.role_of(address)
+        if info is None:
+            continue
+
+        role, owned = _effective_role(info, batches)
+        account = chain.account_info(info["address"]) or {}
+        rows.append(
+            {
+                "key": key,
+                "label": view.demo_label(key),
+                "address": info["address"],
+                "role": role,
+                "roleLabel": view.role_label(role),
+                "ownedBatches": len(owned),
+                "assignedBatches": sum(
+                    1
+                    for batch in batches
+                    if _same_address(batch.get("doctor"), info["address"])
+                ),
+                "balance": account.get("balance"),
+                "privateKey": keys.get(key, ""),
+            }
+        )
+
+    health = chain.health()
+    return {
+        "network": config.network_label(),
+        "chainId": health["chainId"],
+        "expectedChainId": health["expectedChainId"],
+        "rpc": config.RPC_URL,
+        "accounts": rows,
+    }
+
+
 def access_overview(address: str) -> dict:
     """Tabel izin dokter untuk halaman Hak Akses, sesuai peran wallet.
 

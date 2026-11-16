@@ -77,12 +77,15 @@ soulbound, ganti dokter, dan aturan status.
 
 ```
 contracts/EHRTraceability.sol   kontrak utama
-scripts/deploy.js               deploy + seeding peran
+scripts/deploy.js               deploy + seeding peran (lokal & testnet)
 scripts/seed-demo.js            data demo (4 batch, tahap berbeda)
+scripts/lib/deployment.js       helper: file deployment & signer per jaringan
+scripts/export-abi.js           salin ABI ke web/abi.json (untuk hosting)
 test/ehr.test.js                test kontrak
+app.py                          entrypoint ASGI (jembatan ke web/main.py)
 web/                            aplikasi web (FastAPI + Jinja2)
 docs/                           modul, rancangan UI, rancangan kontrak
-app.py                          prototipe Streamlit lama (tidak dipakai lagi)
+legacy/app_streamlit.py         prototipe Streamlit lama (tidak dipakai)
 ```
 
 ## Aplikasi web (UI)
@@ -144,8 +147,54 @@ Variabel lingkungan yang dibaca aplikasi:
 | Variabel | Default | Guna |
 |---|---|---|
 | `EHR_RPC_URL` | `http://127.0.0.1:8545` | alamat RPC Hardhat |
+| `EHR_DEPLOYMENT_PATH` | `deployment.json` | file alamat kontrak + akun demo (mis. `deployment.sepolia.json`) |
 | `EHR_CACHE_TTL` | `15` | umur cache pembacaan chain (detik) |
 | `EHR_RPC_TIMEOUT` | `3` | timeout per request RPC (detik) |
+
+### Deploy online (Vercel + Sepolia)
+
+GitHub Pages **tidak cukup** untuk aplikasi ini: halaman dirender Jinja2 dan
+data dibaca lewat Web3.py, jadi harus ada proses Python. Yang dipakai:
+**Vercel** (menjalankan FastAPI sebagai Vercel Function) untuk aplikasi, dan
+**Sepolia** sebagai chain publik karena node Hardhat lokal tidak bisa diakses
+dari internet.
+
+Alur lengkapnya:
+
+```bash
+# 1. Buat akun demo testnet. Skrip berhenti kalau saldo admin masih 0.
+npm run deploy:sepolia
+#    → salin alamat "admin (deployer)" ke faucet Sepolia, lalu ulangi perintah
+npm run deploy:sepolia
+
+# 2. Isi data demo (4 batch, tahap berbeda)
+npm run seed:sepolia
+```
+
+Hasilnya: `deployment.sepolia.json` berisi alamat kontrak, peran, dan
+**private key akun demo** — kunci itu memang ditampilkan di halaman Wallet
+supaya pengunjung bisa mengimpor akun ke MetaMask dan mencoba tombol tulis.
+Konsekuensinya: bot testnet suka menyapu saldo akun yang kuncinya publik.
+Saldo akun demo bisa habis kapan saja; isi ulang dari faucet saat mau demo.
+Jangan pernah memakai pola ini untuk akun bernilai nyata.
+
+Setelah repo ada di GitHub, buat project di Vercel (import repo, framework
+terdeteksi otomatis sebagai FastAPI lewat `app.py` + `requirements.txt`), lalu
+set environment variable:
+
+| Variabel | Nilai |
+|---|---|
+| `EHR_RPC_URL` | RPC Sepolia ber-API-key (Alchemy/Infura). Endpoint publik tanpa key bisa, tapi dipakai bersama dan mudah kena `429` |
+| `EHR_DEPLOYMENT_PATH` | `deployment.sepolia.json` |
+| `EHR_CACHE_TTL` | `30` (opsional; serverless tanpa cache persisten) |
+
+Catatan penting untuk hosting:
+
+- `artifacts/` tidak ikut ter-commit, jadi ABI dibaca dari `web/abi.json`.
+  Setelah kontrak berubah, jalankan `npx hardhat compile && npm run abi`.
+- Server tidak menulis file apa pun, jadi filesystem read-only Vercel aman.
+- Cache pembacaan chain ada di memori proses; instance baru mulai dingin.
+  Dengan 4 batch, satu halaman tetap terasa cepat (~1 detik setelah warm).
 
 ### Endpoint API internal
 
@@ -155,6 +204,7 @@ Variabel lingkungan yang dibaca aplikasi:
 | `GET /api/role?address=0x…` | peran satu alamat dari `getRole()` |
 | `GET /api/account?address=0x…` | peran efektif, saldo, nonce, harga gas, jumlah batch milik/ditugaskan |
 | `GET /api/access?address=0x…` | tabel izin per batch sesuai peran (+ tabel akun demo untuk admin) |
+| `GET /api/demo` | akun demo testnet: peran, saldo, dan private key yang sengaja dibagikan |
 | `GET /api/batch/{id}/context?address=0x…` | hak tulis satu wallet pada batch (dasar tombol di halaman detail) |
 | `POST /api/tx/build` | validasi + dry-run + calldata siap tanda tangan |
 | `GET /api/tx/{hash}` | status receipt: `pending` / `success` / `failed` |

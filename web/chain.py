@@ -321,4 +321,4 @@ def chain_label(status: dict) -> str:
     chain_id = status["chainId"]
     if status["expectedChainId"] and chain_id != status["expectedChainId"]:
         return f"Chain {chain_id} (harusnya {status['expectedChainId']})"
-    return f"Localhost {chain_id}"
+    return f"{config.network_label()} {chain_id}"

@@ -1,6 +1,9 @@
 const hre = require("hardhat");
-const fs = require("fs");
-const path = require("path");
+const {
+  demoSender,
+  deploymentPath,
+  loadDeployment,
+} = require("./lib/deployment");
 
 // Harus sama dengan enum Status di EHRTraceability.sol
 const STATUS = {
@@ -18,8 +21,6 @@ const STATUS_LABEL = [
   "TREATED",
   "COMPLETED",
 ];
-
-const DEPLOYMENT_PATH = path.join(__dirname, "..", "deployment.json");
 
 // Skenario demo: sengaja beda-beda tahap supaya dashboard & filter ada isinya.
 const SCENARIOS = [
@@ -76,14 +77,17 @@ const SCENARIOS = [
 ];
 
 async function main() {
-  if (!fs.existsSync(DEPLOYMENT_PATH)) {
+  const deployment = loadDeployment();
+
+  if (!deployment || !deployment.address) {
     throw new Error(
-      "deployment.json tidak ada. Jalankan deploy dulu: " +
-        "npx hardhat run scripts/deploy.js --network localhost"
+      "File deployment untuk jaringan ini belum ada. Jalankan deploy dulu: " +
+        `npx hardhat run scripts/deploy.js --network ${hre.network.name} ` +
+        `(dicari di ${deploymentPath()})`,
     );
   }
 
-  const { address } = JSON.parse(fs.readFileSync(DEPLOYMENT_PATH));
+  const { address } = deployment;
 
   const contract = await hre.ethers.getContractAt("EHRTraceability", address);
 
@@ -97,14 +101,13 @@ async function main() {
     return;
   }
 
-  const signers = await hre.ethers.getSigners();
-  const receptionist = signers[1];
+  const receptionist = await demoSender(1, deployment);
 
   console.log("Seed data demo ke kontrak:", address);
 
   for (const scenario of SCENARIOS) {
-    const patient = signers[scenario.patient];
-    const doctor = signers[scenario.doctor];
+    const patient = await demoSender(scenario.patient, deployment);
+    const doctor = await demoSender(scenario.doctor, deployment);
 
     await (
       await contract

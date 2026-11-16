@@ -52,6 +52,9 @@
       copied: "",
       note: "",
       history: [],
+      demo: [],
+      demoLoading: false,
+      demoNetwork: "",
 
       init() {
         this.history = window.ehrSession.list();
@@ -63,6 +66,8 @@
           },
         );
         this.load();
+        // Akun demo tidak bergantung pada wallet yang tersambung.
+        this.loadDemo();
       },
 
       // --- state turunan ----------------------------------------------
@@ -181,6 +186,57 @@
       clearHistory() {
         window.ehrSession.clear();
         this.history = [];
+      },
+
+      // --- akun demo testnet -------------------------------------------
+
+      async loadDemo() {
+        this.demoLoading = true;
+        try {
+          const response = await getJSON("/api/demo");
+          if (response.ok) {
+            this.demo = response.data.accounts || [];
+            this.demoNetwork = response.data.network || "";
+          } else {
+            this.demo = [];
+          }
+        } catch (error) {
+          this.demo = [];
+        } finally {
+          this.demoLoading = false;
+        }
+      },
+
+      /** Link faucet untuk jaringan yang sedang dipakai (kalau ada). */
+      faucetUrl() {
+        const links = {
+          Sepolia: "https://cloud.google.com/application/web3/faucet/ethereum/sepolia",
+          "Base Sepolia": "https://www.alchemy.com/faucets/base-sepolia",
+          "Arbitrum Sepolia": "https://faucet.quicknode.com/arbitrum/sepolia",
+        };
+        return links[this.demoNetwork] || "";
+      },
+
+      short(address) {
+        return shortAddr(address);
+      },
+
+      /** Ada akun demo yang kuncinya dibagikan? Kalau tidak, kartu disembunyikan. */
+      demoShared() {
+        return this.demo.some((row) => row.privateKey);
+      },
+
+      demoBalance(row) {
+        if (row.balance === null || row.balance === undefined) return "—";
+        return `${Number(row.balance).toLocaleString("id-ID", {
+          maximumFractionDigits: 4,
+        })} ETH`;
+      },
+
+      demoScope(row) {
+        if (row.ownedBatches) return `pemilik ${row.ownedBatches} batch`;
+        if (row.assignedBatches) return `${row.assignedBatches} batch ditugaskan`;
+        return "";
       },
 
       // --- riwayat sesi -----------------------------------------------

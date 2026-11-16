@@ -117,6 +117,24 @@ def role_label(role: Any) -> str:
     return ROLE_LABELS.get(str(role), "Tanpa peran")
 
 
+# Nama akun demo dari `scripts/deploy.js`. Kuncinya sama dengan `DEMO_ORDER`
+# di `scripts/lib/deployment.js`; label di sini yang tampil di UI.
+DEMO_LABELS = {
+    "admin": "Admin",
+    "receptionist": "Resepsionis",
+    "doctor": "Dokter",
+    "doctor2": "Dokter 2",
+    "patient": "Pasien",
+    "patient2": "Pasien 2",
+    "patient3": "Pasien 3",
+    "patient4": "Pasien 4",
+}
+
+
+def demo_label(key: str) -> str:
+    return DEMO_LABELS.get(key, key.title())
+
+
 def is_active(path: str, href: str) -> bool:
     """Tandai item navigasi yang sedang dibuka."""
     if href == "/":

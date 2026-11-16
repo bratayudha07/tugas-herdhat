@@ -47,6 +47,7 @@ def _context(request: Request, **extra) -> dict:
         "contract_address": status["address"],
         "rpc_url": config.RPC_URL,
         "rpc_display": config.RPC_URL.split("://")[-1],
+        "network_label": config.network_label(),
         "path": request.url.path,
         "year": date.today().year,
         "query_url": lambda **params: _query_url(request, **params),
@@ -84,20 +85,11 @@ def _page(request: Request, name: str, **extra) -> HTMLResponse:
 # --------------------------------------------------------------------------
 
 
-DEMO_LABELS = {
-    "admin": "Admin",
-    "receptionist": "Resepsionis",
-    "doctor": "Dokter",
-    "doctor2": "Dokter 2",
-    "patient": "Pasien",
-}
-
-
 def _demo_accounts() -> list[dict]:
     """Akun demo dari `deploy.js` — hanya petunjuk, bukan sumber peran."""
     accounts = config.load_deployment().get("demoAccounts", {}) or {}
     return [
-        {"label": DEMO_LABELS.get(key, key.title()), "address": address}
+        {"label": view.demo_label(key), "address": address}
         for key, address in accounts.items()
     ]
 
@@ -290,6 +282,20 @@ def api_batch_context(token_id: int, address: str = ""):
         return JSONResponse({"error": "Batch tidak ditemukan."}, status_code=404)
 
     return JSONResponse(info)
+
+
+@app.get("/api/demo")
+def api_demo():
+    """Akun demo (khusus testnet): peran, saldo, dan kunci untuk dicoba.
+
+    Kalau deployment tidak memuat `demoKeys` (mis. node lokal Hardhat), daftar
+    akun tetap dikirim tanpa kunci — halaman tidak menampilkan apa pun yang
+    tidak ada.
+    """
+    try:
+        return JSONResponse(tx.demo_overview())
+    except tx.TxError as exc:
+        return JSONResponse({"error": exc.message}, status_code=exc.status)
 
 
 @app.get("/api/account")

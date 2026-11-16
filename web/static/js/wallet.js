@@ -167,7 +167,7 @@
             params: [
               {
                 chainId: chainHex(expected),
-                chainName: "Hardhat Local",
+                chainName: document.documentElement.dataset.chainName || "Hardhat Local",
                 rpcUrls: [document.documentElement.dataset.rpcUrl],
                 nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
               },

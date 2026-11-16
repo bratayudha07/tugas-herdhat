@@ -16,7 +16,15 @@ ROOT_DIR = WEB_DIR.parent
 TEMPLATES_DIR = WEB_DIR / "templates"
 STATIC_DIR = WEB_DIR / "static"
 
-DEPLOYMENT_PATH = ROOT_DIR / "deployment.json"
+DEPLOYMENT_PATH = Path(
+    os.getenv("EHR_DEPLOYMENT_PATH", str(ROOT_DIR / "deployment.json"))
+)
+if not DEPLOYMENT_PATH.is_absolute():
+    DEPLOYMENT_PATH = ROOT_DIR / DEPLOYMENT_PATH
+
+# ABI hasil kompilasi. Di lokal dibaca dari artifact Hardhat (selalu segar);
+# di hosting `artifacts/` tidak ikut ter-deploy, jadi ada salinan kecil
+# `web/abi.json` yang di-commit (dibuat oleh `npm run abi`).
 ABI_PATH = (
     ROOT_DIR
     / "artifacts"
@@ -24,6 +32,7 @@ ABI_PATH = (
     / "EHRTraceability.sol"
     / "EHRTraceability.json"
 )
+ABI_FALLBACK_PATH = WEB_DIR / "abi.json"
 
 # RPC lokal Hardhat. Bisa diarahkan ke jaringan lain lewat env var.
 RPC_URL = os.getenv("EHR_RPC_URL", "http://127.0.0.1:8545")
@@ -52,9 +61,11 @@ def load_deployment() -> dict:
 
 @lru_cache(maxsize=1)
 def load_abi() -> list:
-    """ABI dari artifact Hardhat — satu-satunya sumber kebenaran."""
+    """ABI dari artifact Hardhat, atau salinan `web/abi.json` di hosting."""
     artifact = _read_json(ABI_PATH)
-    return artifact.get("abi", [])
+    if artifact.get("abi"):
+        return artifact["abi"]
+    return _read_json(ABI_FALLBACK_PATH) or []
 
 
 def contract_address() -> str:
@@ -70,6 +81,48 @@ def chain_id() -> int | None:
 
 def network_name() -> str:
     return str(load_deployment().get("network", "") or "")
+
+
+# Nama jaringan yang enak dibaca manusia, dipakai chip topbar, banner MetaMask,
+# dan label di halaman Wallet. Jaringan lain dirapikan otomatis ("sepolia" →
+# "Sepolia") supaya tidak perlu daftar manual setiap kali pindah jaringan.
+_NETWORK_LABELS = {
+    "localhost": "Hardhat Local",
+    "hardhat": "Hardhat Local",
+    "sepolia": "Sepolia",
+    "mainnet": "Ethereum",
+    "base": "Base",
+    "base-sepolia": "Base Sepolia",
+    "arbitrum-sepolia": "Arbitrum Sepolia",
+}
+
+
+def network_label() -> str:
+    """Nama jaringan untuk ditampilkan ke pengguna."""
+    raw = network_name().strip()
+    if not raw:
+        return "Hardhat Local"
+    return _NETWORK_LABELS.get(raw.lower(), raw.replace("-", " ").title())
+
+
+# Jaringan yang dianggap lokal: tidak ada nilai nyata, akun demo bisa memakai
+# kunci bawaan Hardhat yang sudah publik sejak dulu.
+LOCAL_NETWORKS = {"localhost", "hardhat", "hardhat-in-process"}
+
+
+def is_public_network() -> bool:
+    """True kalau app menunjuk testnet/mainnet, bukan node lokal."""
+    return bool(network_name()) and network_name().lower() not in LOCAL_NETWORKS
+
+
+def demo_keys() -> dict:
+    """Private key akun demo — hanya ada di file deployment jaringan publik.
+
+    Isinya **sengaja** ada di repo: halaman Wallet menampilkannya supaya
+    pengunjung bisa mengimpor akun demo ke MetaMask dan mencoba tombol tulis.
+    Ini hanya untuk testnet; pola ini tidak boleh dipakai untuk mainnet.
+    """
+    return dict(load_deployment().get("demoKeys", {}) or {})
 
 
 def reload() -> None:

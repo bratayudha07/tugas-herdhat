@@ -91,7 +91,7 @@
         tampil di MetaMask. Transaksi akan ditolak sampai jaringannya sama.
       </p>
       <button type="button" class="btn btn-ghost btn-sm" style="margin-top: 10px" @click="switchNetwork()">
-        {{ icon('refresh', 14) }} Tambah / pindah ke Hardhat Local
+        {{ icon('refresh', 14) }} Tambah / pindah ke {{ network_label }}
       </button>
     </div>
   </div>
@@ -230,6 +230,101 @@
       </div>
     </section>
   </div>
+
+  {# --- akun demo testnet: kunci sengaja dibagikan supaya pengunjung bisa mencoba --- #}
+  <section class="card" x-show="demoShared()" x-cloak>
+    <div class="card-header">
+      <div>
+        <h2 class="card-title">Akun demo <span x-text="demoNetwork"></span></h2>
+        <p class="hint" style="margin: 2px 0 0">
+          Impor salah satu kunci ke MetaMask untuk mencoba tombol tulis. Peran
+          dibaca dari <span class="mono">getRole()</span>, saldo dari RPC.
+        </p>
+      </div>
+      <span class="chip" x-show="demoLoading">
+        <span class="dot" aria-hidden="true"></span> memuat…
+      </span>
+    </div>
+
+    <div class="card-body stack">
+      <div class="banner" data-tone="warning" role="note">
+        <span class="banner-icon">{{ icon('alert', 18) }}</span>
+        <div>
+          <h3>Kunci ini publik — hanya untuk testnet</h3>
+          <p>
+            Akun ini dibuat khusus untuk demo, saldonya tidak bernilai nyata.
+            Siapa pun yang membaca halaman ini bisa memakai kuncinya, dan bot
+            di testnet kerap menyapu saldo akun yang kuncinya dibagikan. Kalau
+            saldo ETH habis, transaksi akan ditolak — isi ulang dari faucet.
+            Jangan pernah memakai pola ini untuk akun bernilai nyata.
+          </p>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th scope="col">Akun</th>
+              <th scope="col">Alamat</th>
+              <th scope="col">Peran</th>
+              <th scope="col">Saldo</th>
+              <th scope="col">Private key</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="row in demo" :key="row.address">
+              <tr>
+                <td>
+                  <span x-text="row.label"></span>
+                  <span class="hint" x-show="demoScope(row)" x-text="demoScope(row)"></span>
+                </td>
+                <td class="mono" :title="row.address">
+                  <div class="copy-row">
+                    <span x-text="short(row.address)"></span>
+                    <button
+                      type="button"
+                      class="btn btn-ghost btn-sm"
+                      @click="copy(row.address, 'demo-addr-' + row.key)"
+                      :aria-label="'Salin alamat ' + row.label"
+                    >
+                      <span x-text="copied === 'demo-addr-' + row.key ? 'Tersalin' : 'Salin'"></span>
+                    </button>
+                  </div>
+                </td>
+                <td x-text="row.roleLabel"></td>
+                <td class="mono" x-text="demoBalance(row)"></td>
+                <td>
+                  <template x-if="row.privateKey">
+                    <details>
+                      <summary>Lihat kunci</summary>
+                      <div class="copy-row" style="margin-top: 6px">
+                        <code class="mono address-full" x-text="row.privateKey"></code>
+                        <button
+                          type="button"
+                          class="btn btn-ghost btn-sm"
+                          @click="copy(row.privateKey, 'demo-key-' + row.key)"
+                          :aria-label="'Salin private key ' + row.label"
+                        >
+                          <span x-text="copied === 'demo-key-' + row.key ? 'Tersalin' : 'Salin'"></span>
+                        </button>
+                      </div>
+                    </details>
+                  </template>
+                  <span class="hint" x-show="!row.privateKey">Tidak dibagikan</span>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="hint" style="margin: 0" x-show="faucetUrl()">
+        Faucet:
+        <a :href="faucetUrl()" target="_blank" rel="noreferrer noopener" x-text="faucetUrl()"></a>
+      </p>
+    </div>
+  </section>
 
   <section class="card">
     <div class="card-header">
