@@ -1,0 +1,65 @@
+{# Komponen kecil yang dipakai lebih dari satu halaman. #}
+{% from "partials/icons.html" import icon %}
+
+{% macro status_badge(status) -%}
+{%- set label = status | status_label -%}
+<span class="badge" data-status="{{ label }}">{{ label }}</span>
+{%- endmacro %}
+
+
+{% macro progress_mini(status) -%}
+{%- set p = progress(status) -%}
+<span class="progress">
+  <span class="dots" aria-hidden="true">
+    {%- for name in STATUS_ORDER -%}
+    <span class="dot-step"{% if loop.index0 < p.step %} data-done="true"{% endif %}></span>
+    {%- endfor -%}
+  </span>
+  <span class="dots-text">{{ p.step }}/{{ p.total }}</span>
+</span>
+{%- endmacro %}
+
+
+{# Banner status chain. Dipakai di dashboard, daftar, dan detail. #}
+{% macro chain_banner(health, contract_address) -%}
+{%- if not health.rpc -%}
+<div class="banner" data-tone="warning" role="status">
+  <span class="banner-icon">{{ icon('alert', 18) }}</span>
+  <div>
+    <h3>Hardhat RPC tidak dapat diakses</h3>
+    <p>
+      Data kontrak belum bisa dibaca. Jalankan node lokal dulu:
+      <code>npx hardhat node</code>
+    </p>
+  </div>
+</div>
+{%- elif not health.contract -%}
+<div class="banner" data-tone="danger" role="alert">
+  <span class="banner-icon">{{ icon('alert', 18) }}</span>
+  <div>
+    <h3>Tidak ada kontrak di alamat ini</h3>
+    <p>
+      Node hidup, tetapi <code>{{ contract_address or 'deployment.json' }}</code>
+      belum berisi kontrak. Deploy ulang:
+      <code>npx hardhat run scripts/deploy.js --network localhost</code>
+    </p>
+  </div>
+</div>
+{%- endif -%}
+{%- endmacro %}
+
+
+{% macro stepper(status) -%}
+{%- set p = progress(status) -%}
+<ol class="stepper">
+  {%- for name in STATUS_ORDER -%}
+  <li class="step"
+    {%- if loop.index0 < p.step %} data-done="true"{% endif %}
+    {%- if loop.index0 == p.step - 1 %} data-current="true"{% endif %}>
+    <span class="step-idx">{{ loop.index }}</span>
+    <span class="step-name">{{ name }}</span>
+    {%- if loop.index0 == p.step - 1 %}<span class="step-now">sekarang</span>{% endif %}
+  </li>
+  {%- endfor -%}
+</ol>
+{%- endmacro %}

@@ -146,6 +146,83 @@ def contract_meta() -> dict | None:
         return None
 
 
+def _batch_dict(raw) -> dict:
+    """Struct `PatientBatch` → dict. Urutan field mengikuti kontrak."""
+    return {
+        "tokenId": int(raw[0]),
+        "patientId": raw[1],
+        "patientName": raw[2],
+        "complaint": raw[3],
+        "treatment": raw[4],
+        "medicine": raw[5],
+        "status": int(raw[6]),
+        "createdAt": int(raw[7]),
+        "createdBy": raw[8],
+        "doctor": raw[9],
+        "patient": raw[10],
+    }
+
+
+def _read_batches() -> list[dict]:
+    """Baca semua batch dari `totalSupply()` + `getBatch()`.
+
+    Sengaja tidak memakai event log: cara ini tetap benar walau node
+    di-restart dan tidak perlu indexer.
+    """
+    contract = get_contract()
+    if contract is None:
+        raise RuntimeError("Kontrak belum siap")
+
+    total = int(contract.functions.totalSupply().call())
+    return [
+        _batch_dict(contract.functions.getBatch(token_id).call())
+        for token_id in range(1, total + 1)
+    ]
+
+
+def list_batches() -> list[dict] | None:
+    """Semua batch, atau None kalau chain/kontrak tidak bisa dibaca."""
+    status = health()
+    if not (status["rpc"] and status["contract"]):
+        return None
+
+    try:
+        return _cached("batches", _read_batches)
+    except Exception:
+        return None
+
+
+def batch_detail(token_id: int) -> dict | None:
+    """Satu batch + riwayatnya; None kalau batch tidak ada / RPC mati."""
+    contract = get_contract()
+    if contract is None:
+        return None
+
+    try:
+        batch = _batch_dict(contract.functions.getBatch(token_id).call())
+        history = contract.functions.getHistory(token_id).call()
+    except Exception:
+        return None
+
+    batch["history"] = [
+        {"action": entry[0], "actor": entry[1], "timestamp": int(entry[2])}
+        for entry in history
+    ]
+    return batch
+
+
+def doctors() -> list[str]:
+    """Daftar dokter terdaftar untuk dropdown/filter."""
+    contract = get_contract()
+    if contract is None:
+        return []
+
+    try:
+        return _cached("doctors", lambda: list(contract.functions.getDoctors().call()))
+    except Exception:
+        return []
+
+
 def chain_label(status: dict) -> str:
     """Teks chip jaringan di topbar."""
     if not status["rpc"]:

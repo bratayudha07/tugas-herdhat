@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "partials/icons.html" import icon %}
+{% from "partials/bits.html" import status_badge, progress_mini, chain_banner %}
 
 {% block title %}Dashboard · EHR Traceability{% endblock %}
 {% block heading %}Ringkasan{% endblock %}
@@ -15,31 +16,7 @@
   </a>
 </div>
 
-{% if not health.rpc %}
-<div class="banner" data-tone="warning" role="status">
-  <span class="banner-icon">{{ icon('alert', 18) }}</span>
-  <div>
-    <h3>Hardhat RPC tidak dapat diakses</h3>
-    <p>
-      Halaman tetap bisa dibuka, tapi data kontrak belum bisa dibaca.
-      Jalankan node lokal dulu:
-      <code>npx hardhat node</code>
-    </p>
-  </div>
-</div>
-{% elif not health.contract %}
-<div class="banner" data-tone="danger" role="alert">
-  <span class="banner-icon">{{ icon('alert', 18) }}</span>
-  <div>
-    <h3>Tidak ada kontrak di alamat ini</h3>
-    <p>
-      Node hidup, tetapi <code>{{ contract_address or 'deployment.json' }}</code>
-      belum berisi kontrak. Deploy ulang:
-      <code>npx hardhat run scripts/deploy.js --network localhost</code>
-    </p>
-  </div>
-</div>
-{% endif %}
+{{ chain_banner(health, contract_address) }}
 
 <div class="metric-grid">
   <div class="metric">
@@ -49,7 +26,7 @@
     </span>
     <span class="metric-sub">
       {% if health.rpc %} blok #{{ health.block | fmt_number }} · chain
-      {{ health.chainId }} {% else %} {{ rpc_url }} {% endif %}
+      {{ health.chainId }} {% else %} {{ rpc_display }} {% endif %}
     </span>
   </div>
 
@@ -88,18 +65,23 @@
 <div class="metric-grid">
   <div class="metric">
     <span class="metric-label">Total batch</span>
-    <span class="metric-value">{{ meta.totalSupply | fmt_number if meta else '—' }}</span>
+    <span class="metric-value">{{ summary.total | fmt_number if batches_ok else '—' }}</span>
     <span class="metric-sub">dari <span class="mono">totalSupply()</span></span>
   </div>
   <div class="metric">
-    <span class="metric-label">Dokter terdaftar</span>
-    <span class="metric-value">{{ meta.doctorCount | fmt_number if meta else '—' }}</span>
-    <span class="metric-sub">dari <span class="mono">getDoctors()</span></span>
+    <span class="metric-label">Wallet pasien</span>
+    <span class="metric-value">{{ summary.patients | fmt_number if batches_ok else '—' }}</span>
+    <span class="metric-sub">pemilik NFT yang berbeda</span>
   </div>
   <div class="metric">
-    <span class="metric-label">Blok terakhir</span>
-    <span class="metric-value">{{ health.block | fmt_number if health.rpc else '—' }}</span>
-    <span class="metric-sub">cache 15 detik · muat ulang manual</span>
+    <span class="metric-label">Selesai</span>
+    <span class="metric-value">{{ summary.completed | fmt_number if batches_ok else '—' }}</span>
+    <span class="metric-sub">status <span class="mono">COMPLETED</span></span>
+  </div>
+  <div class="metric">
+    <span class="metric-label">Dalam proses</span>
+    <span class="metric-value">{{ summary.inProgress | fmt_number if batches_ok else '—' }}</span>
+    <span class="metric-sub">belum <span class="mono">COMPLETED</span></span>
   </div>
 </div>
 
@@ -107,64 +89,122 @@
   <section class="card">
     <div class="card-header">
       <div>
-        <h2 class="card-title">Status pembangunan</h2>
+        <h2 class="card-title">Distribusi status</h2>
         <p class="hint" style="margin: 2px 0 0">
-          Fase 1 selesai: kerangka aplikasi + status jaringan.
+          Jumlah batch per tahap. Batang dihitung dari status tertinggi.
         </p>
       </div>
     </div>
     <div class="card-body">
-      <ul class="list-check">
-        <li><strong>Tahap 1 (selesai)</strong> — FastAPI, layout, token warna,
-          <span class="mono">/api/health</span>.</li>
-        <li><strong>Tahap 2</strong> — dashboard penuh + daftar batch read-only.</li>
-        <li><strong>Tahap 3</strong> — form buat batch + MetaMask + panel tx.</li>
-        <li><strong>Tahap 4</strong> — detail, status, tindakan, consent.</li>
-        <li><strong>Tahap 5</strong> — wallet, hak akses, responsif, README.</li>
-      </ul>
+      {% if not batches_ok %}
+      <p class="hint" style="margin: 0">Data belum bisa dibaca — cek koneksi RPC.</p>
+      {% elif summary.total == 0 %}
+      <div class="empty-state">
+        <strong>Belum ada batch</strong>
+        <span>Batch pertama bisa dibuat dari halaman Buat Batch.</span>
+      </div>
+      {% else %}
+      <div class="dist">
+        {% for name in STATUS_ORDER %}
+        {% set count = summary.counts[name] %}
+        <div class="dist-row">
+          <span class="dist-label">{{ name }}</span>
+          <span class="dist-track">
+            <span
+              class="dist-fill"
+              style="width: {{ (count / summary.max * 100) | round(1) }}%"
+            ></span>
+          </span>
+          <span class="dist-count mono">{{ count }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
     </div>
   </section>
 
   <section class="card">
     <div class="card-header">
       <div>
-        <h2 class="card-title">Akun demo</h2>
+        <h2 class="card-title">Batch terbaru</h2>
         <p class="hint" style="margin: 2px 0 0">
-          Hasil <span class="mono">scripts/deploy.js</span>. Impor private key-nya
-          ke MetaMask.
+          Lima batch dengan token ID terbesar.
         </p>
       </div>
+      <a class="btn btn-ghost btn-sm" href="/rekam-medis">
+        Semua batch {{ icon('arrow-right', 14) }}
+      </a>
     </div>
-    {% if demo_accounts %}
-    <div class="table-wrap">
-      <table class="data-table">
-        <caption>
-          Peran sebenarnya tetap dibaca dari <span class="mono">getRole()</span>.
-        </caption>
-        <thead>
-          <tr>
-            <th scope="col">Peran</th>
-            <th scope="col">Alamat</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for account in demo_accounts %}
-          <tr>
-            <td>{{ account.label }}</td>
-            <td class="mono" title="{{ account.address }}">
-              {{ account.address | short_addr(10, 6) }}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+
+    {% if latest %}
+    <div class="recent-list">
+      {% for batch in latest %}
+      <a class="recent-item" href="/rekam-medis/{{ batch.tokenId }}">
+        <span class="recent-main">
+          <span class="recent-name">{{ batch.patientName }}</span>
+          <span class="recent-meta">
+            #{{ batch.tokenId }} · {{ batch.patientId }} ·
+            {{ batch.createdAt | fmt_datetime }}
+          </span>
+        </span>
+        {{ status_badge(batch.status) }}
+        <span class="recent-progress">{{ progress_mini(batch.status) }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% elif batches_ok %}
+    <div class="empty-state">
+      <strong>Belum ada batch</strong>
+      <span>Setelah ada transaksi <span class="mono">createBatch</span>, data muncul di sini.</span>
     </div>
     {% else %}
     <div class="empty-state">
-      <strong>deployment.json belum ada</strong>
-      <span>Deploy kontrak dulu supaya daftar akun demo muncul.</span>
+      <strong>Data belum tersedia</strong>
+      <span>Hubungkan RPC lalu muat ulang halaman.</span>
     </div>
     {% endif %}
   </section>
 </div>
+
+<section class="card">
+  <div class="card-header">
+    <div>
+      <h2 class="card-title">Akun demo</h2>
+      <p class="hint" style="margin: 2px 0 0">
+        Hasil <span class="mono">scripts/deploy.js</span>. Impor private key-nya
+        ke MetaMask.
+      </p>
+    </div>
+  </div>
+  {% if demo_accounts %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <caption>
+        Peran sebenarnya tetap dibaca dari <span class="mono">getRole()</span>.
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Peran</th>
+          <th scope="col">Alamat</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for account in demo_accounts %}
+        <tr>
+          <td>{{ account.label }}</td>
+          <td class="mono" title="{{ account.address }}">
+            {{ account.address | short_addr(10, 6) }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <strong>deployment.json belum ada</strong>
+    <span>Deploy kontrak dulu supaya daftar akun demo muncul.</span>
+  </div>
+  {% endif %}
+</section>
 {% endblock %}

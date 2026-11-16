@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+
+{% block title %}Batch tidak ditemukan · EHR Traceability{% endblock %}
+{% block heading %}Batch tidak ditemukan{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="empty-state">
+    <strong>Batch #{{ token_id }} tidak ada di kontrak</strong>
+    <span>
+      Kemungkinan node Hardhat baru di-restart (state-nya hanya di memori),
+      atau token ID-nya salah. Lihat daftar batch untuk ID yang benar.
+    </span>
+    <p style="margin: 8px 0 0">
+      <a class="btn btn-primary btn-sm" href="/rekam-medis">
+        {{ icon('folder', 16) }} Buka daftar batch
+      </a>
+    </p>
+  </div>
+</div>
+{% endblock %}

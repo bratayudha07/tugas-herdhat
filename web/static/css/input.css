@@ -814,6 +814,390 @@
     font-weight: 500;
   }
 
+  /* --- toolbar & filter daftar --- */
+
+  .page-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 12px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .toolbar-grow {
+    flex: 1 1 240px;
+    min-width: 0;
+  }
+
+  .toolbar-fixed {
+    flex: 0 1 170px;
+    min-width: 140px;
+  }
+
+  .toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 15px;
+    white-space: nowrap;
+  }
+
+  .check input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--primary-strong);
+  }
+
+  .check input:disabled + span {
+    color: var(--text-muted);
+  }
+
+  .list-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  .view-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .view-toggle {
+    display: inline-flex;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .view-toggle a {
+    padding: 6px 12px;
+    font-size: 13px;
+    color: var(--text-muted);
+    text-decoration: none;
+  }
+
+  .view-toggle a[aria-current="true"] {
+    background: var(--primary-soft);
+    color: var(--primary-strong);
+    font-weight: 600;
+  }
+
+  /* --- kartu batch --- */
+
+  .batch-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
+    gap: 16px;
+    padding: 20px;
+  }
+
+  .batch-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+    padding: 16px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+
+  .batch-card:hover {
+    border-color: var(--border-strong);
+  }
+
+  .batch-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .batch-name {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+
+  .batch-name a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .batch-name a:hover {
+    text-decoration: underline;
+  }
+
+  .batch-meta {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  .batch-complaint {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin: 0;
+    font-size: 15px;
+  }
+
+  .batch-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: auto;
+  }
+
+  /* --- progres mini (titik) --- */
+
+  .progress {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .dots {
+    display: inline-flex;
+    gap: 3px;
+  }
+
+  .dot-step {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--border-strong);
+  }
+
+  .dot-step[data-done="true"] {
+    background: var(--primary);
+  }
+
+  .dots-text {
+    font-size: 13px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* --- distribusi status (bar CSS) --- */
+
+  .dist {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .dist-row {
+    display: grid;
+    grid-template-columns: 92px minmax(0, 1fr) 40px;
+    gap: 12px;
+    align-items: center;
+  }
+
+  .dist-label {
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  .dist-track {
+    height: 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+
+  .dist-fill {
+    display: block;
+    height: 100%;
+    background: var(--primary);
+    border-radius: 999px;
+  }
+
+  .dist-count {
+    text-align: right;
+    color: var(--text-muted);
+  }
+
+  /* --- batch terbaru --- */
+
+  .recent-list {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .recent-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .recent-item:last-child {
+    border-bottom: 0;
+  }
+
+  .recent-item:hover {
+    background: var(--surface);
+  }
+
+  .recent-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .recent-name {
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .recent-meta {
+    font-size: 13px;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .recent-progress {
+    flex: none;
+  }
+
+  /* --- stepper detail --- */
+
+  .stepper {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .step {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--text-muted);
+  }
+
+  .step-idx {
+    width: 24px;
+    height: 24px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--border-strong);
+    border-radius: 50%;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .step[data-done="true"] .step-idx {
+    background: var(--primary-strong);
+    border-color: var(--primary-strong);
+    color: var(--on-primary);
+  }
+
+  .step[data-current="true"] {
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  .step-now {
+    margin-left: auto;
+    font-size: 13px;
+    color: var(--primary-strong);
+    font-weight: 500;
+  }
+
+  /* --- detail: daftar definisi & teks --- */
+
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+    font-size: 13px;
+    text-decoration: none;
+  }
+
+  .detail-token {
+    color: var(--text-muted);
+    font-weight: 400;
+  }
+
+  .def-list {
+    display: grid;
+    grid-template-columns: 130px minmax(0, 1fr);
+    gap: 10px 16px;
+    margin: 0;
+    font-size: 15px;
+  }
+
+  .def-list dt {
+    padding-top: 2px;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  .def-list dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .text-block {
+    margin: 0;
+    white-space: pre-wrap;
+  }
+
+  .history-raw {
+    display: block;
+    color: var(--text-muted);
+  }
+
+  .data-table--wide {
+    min-width: 880px;
+  }
+
   /* --- responsif --- */
 
   @media (max-width: 900px) {
@@ -873,6 +1257,33 @@
 
     .footer {
       padding: 16px;
+    }
+
+    .toolbar,
+    .list-meta,
+    .view-bar,
+    .batch-grid {
+      padding-left: 16px;
+      padding-right: 16px;
+    }
+  }
+
+  @media (max-width: 520px) {
+    .recent-progress {
+      display: none;
+    }
+
+    .def-list {
+      grid-template-columns: 1fr;
+      gap: 4px;
+    }
+
+    .def-list dd {
+      margin-bottom: 8px;
+    }
+
+    .toolbar-fixed {
+      flex: 1 1 100%;
     }
   }
 }

@@ -1,7 +1,7 @@
 ---
 type: design-doc
 project: EHR Traceability (Praktikum Blockchain Pertemuan 11–12)
-status: fase 1 selesai (kerangka + status jaringan), fase 2–5 jalan
+status: fase 1–2 selesai (status jaringan + dashboard + daftar batch), fase 3–5 jalan
 last_updated: 2026-11-16
 ---
 
@@ -9,8 +9,9 @@ last_updated: 2026-11-16
 
 Dokumen ini rancangan UI untuk tugas **Pertemuan 11–12: Implementasi UI**.
 Isinya keputusan desain, struktur halaman, pemetaan ke smart contract, dan
-rencana kerja. Status: **fase 1 sudah jalan** (kerangka FastAPI + layout +
-`/api/health`), fase 2–5 menyusul. `contracts/*.sol` tidak disentuh lagi
+rencana kerja. Status: **fase 1–2 sudah jalan** (kerangka FastAPI + layout +
+`/api/health`, lalu dashboard penuh + daftar batch read-only), fase 3–5
+menyusul. `contracts/*.sol` tidak disentuh lagi
 sejak rancangan kontrak diterapkan.
 
 ---
@@ -645,9 +646,15 @@ Cek sebelum bilang selesai:
 | **0a** ✅ | Kontrak peran & consent + test | `npx hardhat test` 29 lulus |
 | **0b** ✅ | Seed peran di `deploy.js`, deploy + `seed-demo.js` | 4 batch demo, 4 akun berperan benar |
 | **1** ✅ | Scaffold FastAPI, `chain.py`, base layout, token, `/api/health` | dashboard menampilkan chain 31337, kontrak, `totalSupply`, dokter; RPC mati → banner |
-| 2 | Dashboard + Daftar Batch (read-only) | data asli dari kontrak tampil, filter jalan |
+| **2** ✅ | Dashboard + Daftar Batch (read-only) | data asli dari kontrak tampil, filter jalan |
 | 3 | Form Buat Batch + `tx.py` + MetaMask + tx panel | satu transaksi `createBatch` sukses dari UI |
 | 4 | Detail + majukan status + tindakan + consent | alur 3 peran jalan dari UI |
+
+Catatan fase 2: halaman detail `/rekam-medis/{token_id}` ikut dibuat dalam
+versi **read-only** (stepper, data medis, NFT & penugasan, riwayat) supaya
+tautan dari daftar tidak 404. Tombol aksi tulis tetap milik fase 4.
+Filter disimpan di query string (`q`, `status`, `doctor`, `mine`, `wallet`,
+`view`) supaya URL bisa dibagikan dan tahan refresh.
 | 5 | Wallet + Hak Akses + responsif + README | semua halaman modul lengkap |
 
 Aturan: satu fase selesai & dites, baru lanjut. Jangan bangun semua

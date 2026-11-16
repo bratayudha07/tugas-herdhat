@@ -4,14 +4,15 @@ Jalankan dari root repo `Hardhat/`:
 
     uvicorn web.main:app --reload --port 8000
 
-Fase 1: kerangka + status jaringan. Halaman lain masih stub.
+Fase 2: dashboard penuh + daftar batch read-only. Form transaksi masih stub.
 """
 
 from __future__ import annotations
 
 from datetime import date
+from urllib.parse import urlencode
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -46,9 +47,26 @@ def _context(request: Request, **extra) -> dict:
         "rpc_display": config.RPC_URL.split("://")[-1],
         "path": request.url.path,
         "year": date.today().year,
+        "query_url": lambda **params: _query_url(request, **params),
     }
     context.update(extra)
     return context
+
+
+def _query_url(request: Request, **overrides) -> str:
+    """Gabungkan query string sekarang dengan perubahan — untuk link filter.
+
+    Filter disimpan di URL supaya bisa di-share dan tidak hilang saat refresh.
+    Nilai `None`/kosong menghapus parameter.
+    """
+    params = dict(request.query_params)
+    for key, value in overrides.items():
+        if value is None or value == "":
+            params.pop(key, None)
+        else:
+            params[key] = str(value)
+
+    return f"{request.url.path}?{urlencode(params)}" if params else request.url.path
 
 
 def _page(request: Request, name: str, **extra) -> HTMLResponse:
@@ -88,29 +106,24 @@ def dashboard(request: Request, refresh: int = 0):
         chain.refresh()
 
     meta = chain.contract_meta()
+    batches = chain.list_batches()
+    data = batches or []
+    latest = sorted(data, key=lambda item: item["tokenId"], reverse=True)[:5]
 
     return _page(
         request,
         "dashboard.html",
         meta=meta,
         demo_accounts=_demo_accounts(),
+        batches_ok=batches is not None,
+        summary=view.summary(data),
+        latest=latest,
     )
 
 
 # Stub halaman yang dibangun di fase berikutnya. Satu sumber data supaya
 # sidebar, judul, dan isi placeholder tidak berbeda-beda.
 STUBS: dict[str, dict] = {
-    "/rekam-medis": {
-        "heading": "Daftar Batch",
-        "phase": 2,
-        "intro": "Tabel rekam medis dari kontrak: cari, filter status, dan filter "
-        "milik saya.",
-        "items": [
-            "Daftar batch dari <code>totalSupply()</code> + <code>getBatch()</code>",
-            "Pencarian ID / nama pasien dan filter per status",
-            "Tampilan tabel dan kartu, plus empty state",
-        ],
-    },
     "/rekam-medis/baru": {
         "heading": "Buat Batch",
         "phase": 3,
@@ -152,8 +165,75 @@ def _stub(request: Request, path: str) -> HTMLResponse:
 
 
 @app.get("/rekam-medis", response_class=HTMLResponse)
-def batch_list(request: Request):
-    return _stub(request, "/rekam-medis")
+def batch_list(
+    request: Request,
+    q: str = "",
+    status: str = "",
+    doctor: str = "",
+    mine: int = 0,
+    wallet: str = "",
+    view_mode: str = Query("kartu", alias="view"),
+    refresh: int = 0,
+):
+    if refresh:
+        chain.refresh()
+
+    batches = chain.list_batches()
+    # Urut dari token terbaru — daftar lebih sering dipakai untuk melihat
+    # batch yang baru masuk.
+    data = sorted(batches or [], key=lambda item: item["tokenId"], reverse=True)
+
+    status = status.strip().upper()
+    if status not in view.STATUS_ORDER:
+        status = ""
+
+    filtered = view.filter_batches(
+        data,
+        q=q,
+        status=status,
+        doctor=doctor,
+        wallet=wallet,
+        mine=bool(mine),
+    )
+
+    return _page(
+        request,
+        "batches.html",
+        batches=filtered,
+        total=len(data),
+        batches_ok=batches is not None,
+        doctors=chain.doctors(),
+        filters={
+            "q": q,
+            "status": status,
+            "doctor": doctor,
+            "mine": bool(mine),
+            "wallet": wallet.strip(),
+        },
+        filters_active=bool(
+            q.strip() or status or doctor or (mine and wallet.strip())
+        ),
+        wallet_missing=bool(mine and not wallet.strip()),
+        view_mode="tabel" if view_mode == "tabel" else "kartu",
+    )
+
+
+@app.get("/rekam-medis/{token_id:int}", response_class=HTMLResponse)
+def batch_detail(request: Request, token_id: int, refresh: int = 0):
+    """Detail read-only. Aksi tulis menyusul di tahap 4."""
+    if refresh:
+        chain.refresh()
+
+    batch = chain.batch_detail(token_id)
+    if batch is None:
+        return templates.TemplateResponse(
+            request=request,
+            name="batch_missing.html",
+            context=_context(request, token_id=token_id),
+            status_code=404,
+        )
+
+    return _page(request, "batch_detail.html", batch=batch)
 
 
 @app.get("/rekam-medis/baru", response_class=HTMLResponse)

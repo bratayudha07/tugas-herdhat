@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{% from "partials/bits.html" import status_badge, progress_mini, chain_banner %}
+
+{% block title %}Daftar Batch · EHR Traceability{% endblock %}
+{% block heading %}Rekam Medis{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h2>Daftar Batch Rekam Medis</h2>
+    <p>
+      Data langsung dari kontrak: <span class="mono">totalSupply()</span> +
+      <span class="mono">getBatch()</span>.
+    </p>
+  </div>
+  <div class="page-actions">
+    <span class="chip">
+      {{ total | fmt_number }} batch
+    </span>
+    <a class="btn btn-ghost" href="{{ query_url(refresh=1) }}">
+      {{ icon('refresh', 16) }} Muat ulang
+    </a>
+  </div>
+</div>
+
+{{ chain_banner(health, contract_address) }}
+
+{% if wallet_missing %}
+<div class="banner" data-tone="info" role="status">
+  <span class="banner-icon">{{ icon('info', 18) }}</span>
+  <div>
+    <h3>Filter "Milik saya" butuh wallet</h3>
+    <p>
+      Sambungkan MetaMask dulu lewat tombol di kanan atas. Tanpa alamat wallet,
+      filter ini tidak bisa tahu batch mana yang milikmu.
+    </p>
+  </div>
+</div>
+{% endif %}
+
+<section class="card">
+  <form class="toolbar" method="get" action="/rekam-medis" role="search">
+    <input type="hidden" name="view" value="{{ view_mode }}" />
+    <input type="hidden" name="wallet" :value="address || ''" />
+
+    <div class="field toolbar-grow">
+      <label class="label" for="q">Cari</label>
+      <input
+        class="input"
+        id="q"
+        name="q"
+        type="search"
+        value="{{ filters.q }}"
+        placeholder="Nama pasien, ID pasien, atau token ID"
+      />
+    </div>
+
+    <div class="field toolbar-fixed">
+      <label class="label" for="status">Status</label>
+      <select class="input" id="status" name="status">
+        <option value="">Semua status</option>
+        {% for name in STATUS_ORDER %}
+        <option value="{{ name }}" {% if filters.status == name %}selected{% endif %}>
+          {{ name }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="field toolbar-fixed">
+      <label class="label" for="doctor">Dokter</label>
+      <select class="input" id="doctor" name="doctor">
+        <option value="">Semua dokter</option>
+        {% for address in doctors %}
+        <option value="{{ address }}" {% if filters.doctor | lower == address | lower %}selected{% endif %}>
+          {{ address | short_addr }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="toolbar-actions">
+      <label class="check">
+        <input
+          type="checkbox"
+          name="mine"
+          value="1"
+          {% if filters.mine %}checked{% endif %}
+          :disabled="!address"
+        />
+        <span>Milik saya</span>
+      </label>
+      <button class="btn btn-primary" type="submit">Terapkan</button>
+    </div>
+  </form>
+
+  <div class="list-meta">
+    <span>
+      Menampilkan <strong>{{ batches | length }}</strong> dari
+      <strong>{{ total }}</strong> batch{% if filters_active %} (filter aktif){%
+      endif %}.
+    </span>
+    {% if filters_active %}
+    <a href="{{ query_url(q=None, status=None, doctor=None, mine=None, wallet=None) }}">
+      Reset filter
+    </a>
+    {% endif %}
+  </div>
+
+  {% if not batches_ok %}
+  <div class="empty-state">
+    <strong>Data belum bisa dibaca</strong>
+    <span>Status RPC dan kontrak bisa dicek di <a href="/api/health">/api/health</a>.</span>
+  </div>
+  {% elif total == 0 %}
+  <div class="empty-state">
+    <strong>Belum ada batch di kontrak</strong>
+    <span>
+      Node Hardhat menyimpan state di memori — kalau baru di-restart, data
+      sebelumnya memang hilang. Deploy + seed ulang, atau buat batch baru.
+    </span>
+    <p style="margin: 8px 0 0">
+      <a class="btn btn-primary btn-sm" href="/rekam-medis/baru">
+        {{ icon('note', 16) }} Buat batch
+      </a>
+    </p>
+  </div>
+  {% elif not batches %}
+  <div class="empty-state">
+    <strong>Tidak ada batch yang cocok filter</strong>
+    <span>Coba kata kunci lain atau longgarkan filter status/dokter.</span>
+    <p style="margin: 8px 0 0">
+      <a class="btn btn-ghost btn-sm" href="{{ query_url(q=None, status=None, doctor=None, mine=None, wallet=None) }}">
+        {{ icon('refresh', 16) }} Reset filter
+      </a>
+    </p>
+  </div>
+  {% else %}
+
+  <div class="view-bar">
+    <div class="view-toggle" role="group" aria-label="Pilih tampilan daftar">
+      <a href="{{ query_url(view='kartu') }}"
+        {%- if view_mode == 'kartu' %} aria-current="true"{% endif %}>
+        Kartu
+      </a>
+      <a href="{{ query_url(view='tabel') }}"
+        {%- if view_mode == 'tabel' %} aria-current="true"{% endif %}>
+        Tabel
+      </a>
+    </div>
+    <span class="hint">Urut dari token ID terbaru.</span>
+  </div>
+
+  {% if view_mode == 'tabel' %}
+  <div class="table-wrap">
+    <table class="data-table data-table--wide">
+      <caption>
+        Status dan dokter berasal dari kontrak. NFT bersifat soulbound, jadi
+        pemilik tidak berubah.
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Token</th>
+          <th scope="col">ID Pasien</th>
+          <th scope="col">Nama</th>
+          <th scope="col">Status</th>
+          <th scope="col">Dokter</th>
+          <th scope="col">Pemilik</th>
+          <th scope="col">Dibuat</th>
+          <th scope="col">Aksi</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for batch in batches %}
+        <tr>
+          <td class="mono">#{{ batch.tokenId }}</td>
+          <td class="mono">{{ batch.patientId }}</td>
+          <td>{{ batch.patientName }}</td>
+          <td>{{ status_badge(batch.status) }}</td>
+          <td class="mono" title="{{ batch.doctor }}">
+            {{ batch.doctor | short_addr }}
+          </td>
+          <td class="mono" title="{{ batch.patient }}">
+            {{ batch.patient | short_addr }}
+          </td>
+          <td>{{ batch.createdAt | fmt_datetime }}</td>
+          <td>
+            <a class="btn btn-ghost btn-sm" href="/rekam-medis/{{ batch.tokenId }}">
+              Detail
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="batch-grid">
+    {% for batch in batches %}
+    <article class="batch-card">
+      <div class="batch-head">
+        <div>
+          <p class="batch-meta">
+            Token #{{ batch.tokenId }} · {{ batch.patientId }}
+          </p>
+          <h3 class="batch-name">
+            <a href="/rekam-medis/{{ batch.tokenId }}">{{ batch.patientName }}</a>
+          </h3>
+        </div>
+        {{ status_badge(batch.status) }}
+      </div>
+
+      <p class="batch-complaint">{{ batch.complaint }}</p>
+
+      <div class="batch-foot">
+        {{ progress_mini(batch.status) }}
+        <span class="batch-meta">{{ batch.createdAt | fmt_datetime }}</span>
+      </div>
+
+      <div class="batch-foot">
+        <span class="batch-meta">
+          Dokter <span class="mono">{{ batch.doctor | short_addr }}</span>
+        </span>
+        <a class="btn btn-ghost btn-sm" href="/rekam-medis/{{ batch.tokenId }}">
+          Detail {{ icon('arrow-right', 14) }}
+        </a>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endif %}
+</section>
+{% endblock %}

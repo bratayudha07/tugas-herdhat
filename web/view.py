@@ -1,4 +1,4 @@
-"""Helper tampilan: label, format angka/alamat, daftar navigasi.
+"""Helper tampilan: label, format angka/alamat, filter, daftar navigasi.
 
 Semua yang menerjemahkan data chain ke teks UI ada di sini supaya template
 tetap tipis dan aturannya tidak tersebar.
@@ -6,10 +6,21 @@ tetap tipis dan aturannya tidak tersebar.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 # Urutan resmi enum Status di kontrak. Dipakai untuk stepper & filter.
 STATUS_ORDER = ["CREATED", "EXAMINED", "DIAGNOSED", "TREATED", "COMPLETED"]
+
+# Aksi di `getHistory()` → kalimat yang bisa dibaca.
+HISTORY_LABELS = {
+    "BATCH_CREATED": "Batch dibuat",
+    "DOCTOR_ASSIGNED": "Dokter penanggung jawab diganti",
+    "CONSENT_GRANTED": "Izin dokter diberikan",
+    "CONSENT_REVOKED": "Izin dokter dicabut",
+    "STATUS_UPDATED": "Status diperbarui",
+    "TREATMENT_UPDATED": "Tindakan & obat diperbarui",
+}
 
 # Istilah teknis dibiarkan Inggris; yang diterjemahkan hanya label peran.
 ROLE_LABELS = {
@@ -74,6 +85,16 @@ def fmt_eth(wei: Any, decimals: int = 4) -> str:
     return f"{eth:,.{decimals}f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+def fmt_datetime(timestamp: Any) -> str:
+    """Unix timestamp → `16-11-2026 15:04` (waktu lokal mesin ini)."""
+    if not timestamp:
+        return "—"
+    try:
+        return datetime.fromtimestamp(int(timestamp)).strftime("%d-%m-%Y %H:%M")
+    except (TypeError, ValueError, OSError):
+        return "—"
+
+
 def status_label(status: Any) -> str:
     """Enum status (int) → nama yang dipakai kontrak."""
     if isinstance(status, int) and 0 <= status < len(STATUS_ORDER):
@@ -106,13 +127,108 @@ def is_active(path: str, href: str) -> bool:
     return href == "/rekam-medis" and path.startswith("/rekam-medis/")
 
 
+# --------------------------------------------------------------------------
+# Daftar batch: filter & ringkasan
+# --------------------------------------------------------------------------
+
+
+def status_index(status: Any) -> int:
+    """Posisi status di `STATUS_ORDER` (0–4); -1 kalau tidak dikenal."""
+    label = status_label(status)
+    return STATUS_ORDER.index(label) if label in STATUS_ORDER else -1
+
+
+def progress(status: Any) -> dict:
+    """Untuk stepper mini: `1/5`, `2/5`, …"""
+    index = status_index(status)
+    return {
+        "step": index + 1,
+        "total": len(STATUS_ORDER),
+        "finished": index == len(STATUS_ORDER) - 1,
+    }
+
+
+def filter_batches(
+    batches: list[dict],
+    *,
+    q: str = "",
+    status: str = "",
+    doctor: str = "",
+    wallet: str = "",
+    mine: bool = False,
+) -> list[dict]:
+    """Terapkan filter daftar. Semua perbandingan case-insensitive."""
+    needle = q.strip().lower()
+    status = status.strip().upper()
+    doctor = doctor.strip().lower()
+    wallet = wallet.strip().lower()
+
+    result = []
+    for batch in batches:
+        if status and status_label(batch.get("status")) != status:
+            continue
+        if doctor and str(batch.get("doctor", "")).lower() != doctor:
+            continue
+        if mine and wallet:
+            if wallet not in (
+                str(batch.get("patient", "")).lower(),
+                str(batch.get("doctor", "")).lower(),
+            ):
+                continue
+        if needle:
+            haystack = (
+                str(batch.get("patientId", "")).lower(),
+                str(batch.get("patientName", "")).lower(),
+                str(batch.get("tokenId", "")),
+            )
+            if not any(needle in value for value in haystack):
+                continue
+        result.append(batch)
+
+    return result
+
+
+def summary(batches: list[dict]) -> dict:
+    """Angka ringkasan dashboard: total, pasien unik, selesai, proses."""
+    counts = {name: 0 for name in STATUS_ORDER}
+    patients = set()
+
+    for batch in batches:
+        label = status_label(batch.get("status"))
+        if label in counts:
+            counts[label] += 1
+        patient = batch.get("patient")
+        if patient:
+            patients.add(str(patient).lower())
+
+    total = len(batches)
+    completed = counts["COMPLETED"]
+
+    return {
+        "total": total,
+        "patients": len(patients),
+        "completed": completed,
+        "inProgress": total - completed,
+        "counts": counts,
+        "max": max(counts.values()) or 1,
+    }
+
+
+def history_label(action: str) -> str:
+    """Nama aksi mentah kontrak → kalimat Indonesia."""
+    return HISTORY_LABELS.get(action, action)
+
+
 def register(env) -> None:
     """Daftarkan helper sebagai filter/global Jinja2."""
     env.filters["short_addr"] = short_addr
     env.filters["fmt_number"] = fmt_number
     env.filters["fmt_eth"] = fmt_eth
+    env.filters["fmt_datetime"] = fmt_datetime
     env.filters["status_label"] = status_label
     env.filters["role_label"] = role_label
+    env.filters["history_label"] = history_label
     env.globals["is_active"] = is_active
+    env.globals["progress"] = progress
     env.globals["NAV"] = NAV
     env.globals["STATUS_ORDER"] = STATUS_ORDER
