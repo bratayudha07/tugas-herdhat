@@ -538,13 +538,20 @@ def demo_overview() -> dict:
     batches = chain.list_batches() or []
 
     rows = []
+    # Saldo dan peran dibaca sekali untuk semua akun (batch request), bukan
+    # per baris — endpoint publik men-throttle kalau ditembak satu per satu.
+    saldo = chain.balances(list(accounts.values()))
+    peran = chain.roles(list(accounts.values()))
+
     for key, address in accounts.items():
-        info = chain.role_of(address)
+        try:
+            info = peran.get(Web3.to_checksum_address(address)) or chain.role_of(address)
+        except ValueError:
+            info = None
         if info is None:
             continue
 
         role, owned = _effective_role(info, batches)
-        account = chain.account_info(info["address"]) or {}
         rows.append(
             {
                 "key": key,
@@ -558,7 +565,7 @@ def demo_overview() -> dict:
                     for batch in batches
                     if _same_address(batch.get("doctor"), info["address"])
                 ),
-                "balance": account.get("balance"),
+                "balance": saldo.get(info["address"]),
                 "privateKey": keys.get(key, ""),
             }
         )
@@ -593,6 +600,7 @@ def access_overview(address: str) -> dict:
     role, _owned = _effective_role(info, batches)
 
     rows = []
+    selected = []
     for batch in sorted(batches, key=lambda item: item["tokenId"], reverse=True):
         doctor = batch.get("doctor") or ""
         is_owner = _same_address(batch.get("patient"), info["address"])
@@ -603,6 +611,17 @@ def access_overview(address: str) -> dict:
         if role == "DOCTOR" and not is_assigned:
             continue
 
+        selected.append(batch)
+
+    # Izin dokter dibaca sekali untuk semua baris (batch request).
+    izin = chain.consent_map(
+        [(batch["tokenId"], batch.get("doctor") or "") for batch in selected]
+    )
+
+    for batch in selected:
+        doctor = batch.get("doctor") or ""
+        is_owner = _same_address(batch.get("patient"), info["address"])
+        is_assigned = _same_address(doctor, info["address"])
         completed = batch["status"] >= len(view.STATUS_ORDER) - 1
         rows.append(
             {
@@ -613,7 +632,7 @@ def access_overview(address: str) -> dict:
                 "completed": completed,
                 "doctor": doctor,
                 "patient": batch["patient"],
-                "consent": chain.consent_of(batch["tokenId"], doctor) if doctor else None,
+                "consent": izin.get(batch["tokenId"]),
                 "isOwner": is_owner,
                 "isAssignedDoctor": is_assigned,
                 "canConsent": role == "PATIENT" and is_owner and not completed and bool(doctor),

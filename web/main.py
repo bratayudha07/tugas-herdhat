@@ -317,24 +317,26 @@ def api_access(address: str = ""):
 
     # Daftar akun demo + perannya hanya berguna untuk admin (halaman penjelasan
     # peran). Label-nya milik lapisan halaman, jadi disusun di sini.
+    # Sumbernya ringkasan demo (peran + saldo dibaca batch), bukan
+    # `account_overview` per akun — versi per akun menembak RPC empat kali untuk
+    # tiap akun, dan itu membuat halaman menunggu belasan detik di RPC publik.
     if payload["role"] == "ADMIN":
-        accounts = []
-        for account in _demo_accounts():
-            try:
-                info = tx.account_overview(account["address"])
-            except tx.TxError:
-                continue
-            accounts.append(
-                {
-                    "label": account["label"],
-                    "address": account["address"],
-                    "role": info["role"],
-                    "roleLabel": info["roleLabel"],
-                    "ownedBatches": info["ownedBatches"],
-                    "assignedBatches": info["assignedBatches"],
-                }
-            )
-        payload["accounts"] = accounts
+        try:
+            ringkas = tx.demo_overview().get("accounts", [])
+        except tx.TxError:
+            ringkas = []
+
+        payload["accounts"] = [
+            {
+                "label": row["label"],
+                "address": row["address"],
+                "role": row["role"],
+                "roleLabel": row["roleLabel"],
+                "ownedBatches": row["ownedBatches"],
+                "assignedBatches": row["assignedBatches"],
+            }
+            for row in ringkas
+        ]
 
     return JSONResponse(payload)
 

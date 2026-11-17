@@ -76,6 +76,88 @@ const SCENARIOS = [
   },
 ];
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function errorText(error) {
+  return String(
+    error?.info?.error?.message ||
+      error?.shortMessage ||
+      error?.message ||
+      error
+  );
+}
+
+/**
+ * Kirim transaksi dengan sedikit kesabaran.
+ *
+ * RPC publik (publicnode dkk.) itu load-balanced: receipt satu transaksi bisa
+ * datang dari backend A, sementara `eth_estimateGas` untuk transaksi berikutnya
+ * mendarat di backend B yang masih tertinggal satu blok. Gejalanya revert palsu
+ * seperti "Pasien belum memberi izin" padahal consent-nya sudah true.
+ * Karena itu pengiriman diulang beberapa kali, dan hanya untuk galat yang
+ * memang biasanya sementara — revert logika kontrak tetap dilempar apa adanya.
+ */
+async function send(label, factory, attempts = 5) {
+  let lastError;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    let tx;
+    try {
+      tx = await factory();
+    } catch (error) {
+      lastError = error;
+      const message = errorText(error);
+      const transient =
+        /execution reverted|CALL_EXCEPTION|nonce|already known|timeout|429|503|502/i.test(
+          message,
+        );
+
+      if (!transient || attempt === attempts) break;
+
+      const wait = 2000 * attempt;
+      console.log(
+        `  ${label}: ${message.split("\n")[0].slice(0, 70)} — ` +
+          `ulang dalam ${wait / 1000}s (${attempt}/${attempts})`,
+      );
+      await sleep(wait);
+      continue;
+    }
+
+    return tx.wait();
+  }
+
+  throw lastError;
+}
+
+/** Cari tokenId yang sudah ada untuk patientId tertentu (null kalau belum). */
+async function findTokenId(contract, patientId) {
+  const total = await contract.totalSupply();
+
+  for (let id = 1n; id <= total; id += 1n) {
+    const batch = await contract.getBatch(id);
+    if (batch.patientId === patientId) return id;
+  }
+
+  return null;
+}
+
+/**
+ * Versi sabar dari `findTokenId`, dipakai setelah createBatch.
+ *
+ * RPC publik bisa menjawab `totalSupply` dari backend yang belum melihat blok
+ * terbaru, jadi batch yang baru dibuat sempat "tidak ada". Dibaca ulang
+ * beberapa kali sebelum dianggap gagal.
+ */
+async function waitForTokenId(contract, patientId, attempts = 6) {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const tokenId = await findTokenId(contract, patientId);
+    if (tokenId !== null) return tokenId;
+    if (attempt < attempts) await sleep(2000);
+  }
+
+  return null;
+}
+
 async function main() {
   const deployment = loadDeployment();
 
@@ -90,64 +172,92 @@ async function main() {
   const { address } = deployment;
 
   const contract = await hre.ethers.getContractAt("EHRTraceability", address);
-
-  const existing = await contract.totalSupply();
-
-  if (existing > 0n) {
-    console.log(
-      `Sudah ada ${existing} batch di kontrak. Seed dibatalkan supaya ` +
-        "tidak menumpuk data ganda."
-    );
-    return;
-  }
-
   const receptionist = await demoSender(1, deployment);
 
   console.log("Seed data demo ke kontrak:", address);
 
+  // Seed sengaja bisa dijalankan ulang: batch dicocokkan lewat patientId, dan
+  // langkah yang sudah tercapai di chain dilewati. Jadi kalau jaringan putus di
+  // tengah jalan, cukup jalankan perintah yang sama lagi — tidak ada data ganda.
   for (const scenario of SCENARIOS) {
     const patient = await demoSender(scenario.patient, deployment);
     const doctor = await demoSender(scenario.doctor, deployment);
 
-    await (
-      await contract
-        .connect(receptionist)
-        .createBatch(
-          scenario.patientId,
-          scenario.patientName,
-          scenario.complaint,
-          patient.address,
-          doctor.address,
-          ""
-        )
-    ).wait();
+    let tokenId = await findTokenId(contract, scenario.patientId);
 
-    const tokenId = await contract.totalSupply();
+    if (tokenId === null) {
+      await send(`createBatch ${scenario.patientId}`, () =>
+        contract
+          .connect(receptionist)
+          .createBatch(
+            scenario.patientId,
+            scenario.patientName,
+            scenario.complaint,
+            patient.address,
+            doctor.address,
+            ""
+          )
+      );
+
+      tokenId = await waitForTokenId(contract, scenario.patientId);
+
+      if (tokenId === null) {
+        throw new Error(
+          `Batch ${scenario.patientId} tidak ditemukan setelah dibuat.`
+        );
+      }
+    }
 
     if (scenario.consent) {
-      await (await contract.connect(patient).setConsent(tokenId, true)).wait();
+      const granted = await contract.consent(tokenId, doctor.address);
+      if (!granted) {
+        await send(`setConsent ${scenario.patientId}`, () =>
+          contract.connect(patient).setConsent(tokenId, true)
+        );
+      }
     }
 
     if (scenario.treatment || scenario.medicine) {
-      await (
-        await contract
-          .connect(doctor)
-          .updateTreatment(tokenId, scenario.treatment, scenario.medicine)
-      ).wait();
+      const batch = await contract.getBatch(tokenId);
+      const filled =
+        batch.treatment === scenario.treatment &&
+        batch.medicine === scenario.medicine;
+
+      if (!filled) {
+        await send(`updateTreatment ${scenario.patientId}`, () =>
+          contract
+            .connect(doctor)
+            .updateTreatment(tokenId, scenario.treatment, scenario.medicine)
+        );
+      }
     }
 
+    // Status hanya boleh naik satu langkah, jadi langkah yang sudah tercapai
+    // dilewati (aman untuk dijalankan ulang).
+    let current = Number((await contract.getBatch(tokenId)).status);
+
     for (const step of scenario.steps) {
-      await (await contract.connect(doctor).updateStatus(tokenId, step)).wait();
+      if (step <= current) continue;
+
+      await send(
+        `updateStatus ${scenario.patientId} → ${STATUS_LABEL[step]}`,
+        () => contract.connect(doctor).updateStatus(tokenId, step)
+      );
+
+      current = step;
     }
 
     console.log(
       `  #${tokenId} ${scenario.patientName.padEnd(15)} ` +
         `consent=${scenario.consent ? "ya" : "belum"} ` +
-        `status=${STATUS_LABEL[scenario.steps.length ? scenario.steps.at(-1) : 0]}`
+        `status=${STATUS_LABEL[current]}`
     );
   }
 
-  console.log("\nSeed selesai. Total batch:", (await contract.totalSupply()).toString());
+  console.log(
+    "\nSeed selesai. Total batch:",
+    (await contract.totalSupply()).toString()
+  );
 }
 
 main().catch((error) => {
