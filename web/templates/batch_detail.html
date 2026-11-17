@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "partials/icons.html" import icon %}
-{% from "partials/bits.html" import status_badge, stepper, chain_banner, tx_dialog, tx_panel %}
+{% from "partials/bits.html" import status_badge, chain_banner, tx_dialog, tx_panel %}
 
 {% block head_scripts %}
 <script defer src="{{ url_for('static', path='js/tx.js') }}"></script>
@@ -26,7 +26,7 @@
     </p>
   </div>
   <div class="page-actions">
-    {{ status_badge(batch.status) }}
+    <span id="batch-status-badge">{{ status_badge(batch.status) }}</span>
     <a class="btn btn-ghost" href="{{ query_url(refresh=1) }}">
       {{ icon('refresh', 16) }} Muat ulang
     </a>
@@ -35,39 +35,12 @@
 
 {{ chain_banner(health, contract_address) }}
 
+{# Kartu-kartu di bawah ini juga dirender ulang oleh endpoint
+   `/api/batch/{id}/panels` setelah transaksi sukses, jadi markup-nya tinggal
+   di partial (dipakai halaman ini dan endpoint itu). #}
 <div class="grid-two">
-  <section class="card">
-    <div class="card-header">
-      <h2 class="card-title">Progres status</h2>
-    </div>
-    <div class="card-body">
-      {{ stepper(batch.status) }}
-      <p class="hint" style="margin: 14px 0 0">
-        Status hanya bisa maju satu tahap per transaksi, dan berhenti permanen
-        di <span class="mono">COMPLETED</span>.
-      </p>
-    </div>
-  </section>
-
-  <section class="card">
-    <div class="card-header">
-      <h2 class="card-title">Data medis</h2>
-    </div>
-    <div class="card-body">
-      <dl class="def-list">
-        <dt>Keluhan</dt>
-        <dd><p class="text-block">{{ batch.complaint or '—' }}</p></dd>
-        <dt>Tindakan</dt>
-        <dd><p class="text-block">{{ batch.treatment or '—' }}</p></dd>
-        <dt>Obat</dt>
-        <dd><p class="text-block">{{ batch.medicine or '—' }}</p></dd>
-      </dl>
-      <p class="hint" style="margin: 14px 0 0">
-        Data ini tersimpan plaintext di chain lokal. Izin dokter mengatur hak
-        <strong>menulis</strong>, bukan kerahasiaan baca.
-      </p>
-    </div>
-  </section>
+  {% include "partials/batch_progress.html" %}
+  {% include "partials/batch_medical.html" %}
 </div>
 
 {# Aksi tulis butuh data wallet di browser, jadi seluruh blok ini satu
@@ -80,39 +53,7 @@
   data-medicine="{{ batch.medicine }}"
 >
   <div class="grid-two">
-    <section class="card">
-      <div class="card-header">
-        <h2 class="card-title">NFT &amp; penugasan</h2>
-      </div>
-      <div class="card-body">
-        <dl class="def-list">
-          <dt>Token</dt>
-          <dd class="mono">#{{ batch.tokenId }} · ERC-721 soulbound</dd>
-          <dt>Pemilik</dt>
-          <dd class="mono" title="{{ batch.patient }}">{{ batch.patient }}</dd>
-          <dt>Dokter</dt>
-          <dd class="mono" title="{{ batch.doctor }}">{{ batch.doctor }}</dd>
-          <dt>Izin dokter</dt>
-          <dd>
-            {% if consent %}
-            <span class="chip" data-state="ok">
-              <span class="dot" aria-hidden="true"></span> Aktif
-            </span>
-            {% elif consent is none %}
-            <span class="hint">Tidak terbaca dari chain</span>
-            {% else %}
-            <span class="chip" data-state="warn">
-              <span class="dot" aria-hidden="true"></span> Belum ada
-            </span>
-            {% endif %}
-          </dd>
-          <dt>Dibuat oleh</dt>
-          <dd class="mono" title="{{ batch.createdBy }}">{{ batch.createdBy }}</dd>
-          <dt>Dibuat</dt>
-          <dd>{{ batch.createdAt | fmt_datetime }}</dd>
-        </dl>
-      </div>
-    </section>
+    {% include "partials/batch_assignment.html" %}
 
     <section class="card">
       <div class="card-header">
@@ -373,52 +314,11 @@
   </div>
 
   <p class="hint" x-show="phase === 'success'" style="margin: 0">
-    Tombol di kartu aksi sudah diperbarui dari chain. Kartu data medis dan
-    riwayat masih versi sebelum transaksi — muat ulang untuk melihat semuanya.
+    Status, data medis, dan riwayat sudah dimuat ulang dari chain. Muat ulang
+    halaman hanya perlu kalau ada perubahan dari wallet lain.
   </p>
   {% endcall %}
 </div>
 
-<section class="card">
-  <div class="card-header">
-    <div>
-      <h2 class="card-title">Riwayat</h2>
-      <p class="hint" style="margin: 2px 0 0">
-        Dari <span class="mono">getHistory()</span>, terbaru di atas.
-      </p>
-    </div>
-  </div>
-  {% if batch.history %}
-  <div class="table-wrap">
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th scope="col">Waktu</th>
-          <th scope="col">Aksi</th>
-          <th scope="col">Oleh</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for entry in batch.history %}
-        <tr>
-          <td>{{ entry.timestamp | fmt_datetime }}</td>
-          <td>
-            {{ entry.action | history_label }}
-            <span class="mono history-raw">{{ entry.action }}</span>
-          </td>
-          <td class="mono" title="{{ entry.actor }}">
-            {{ entry.actor | short_addr }}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% else %}
-  <div class="empty-state">
-    <strong>Belum ada riwayat</strong>
-    <span>Riwayat terisi sejak batch dibuat.</span>
-  </div>
-  {% endif %}
-</section>
+{% include "partials/batch_history.html" %}
 {% endblock %}

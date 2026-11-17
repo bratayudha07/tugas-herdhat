@@ -80,6 +80,22 @@ def _page(request: Request, name: str, **extra) -> HTMLResponse:
     )
 
 
+# Kartu detail batch yang ditukar setelah transaksi sukses: id elemen di HTML
+# → template partial-nya. Halaman detail memakai partial yang sama lewat
+# `{% include %}`, jadi markup tiap kartu hanya hidup di satu file.
+_PANEL_TEMPLATES = {
+    "batch-progress": "partials/batch_progress.html",
+    "batch-medical": "partials/batch_medical.html",
+    "batch-assignment": "partials/batch_assignment.html",
+    "batch-history": "partials/batch_history.html",
+}
+
+
+def _render_partial(name: str, **context) -> str:
+    """Render satu partial Jinja tanpa pembungkus halaman."""
+    return templates.env.get_template(name).render(**context)
+
+
 # --------------------------------------------------------------------------
 # Halaman
 # --------------------------------------------------------------------------
@@ -282,6 +298,34 @@ def api_batch_context(token_id: int, address: str = ""):
         return JSONResponse({"error": "Batch tidak ditemukan."}, status_code=404)
 
     return JSONResponse(info)
+
+
+@app.get("/api/batch/{token_id}/panels")
+def api_batch_panels(token_id: int):
+    """Potongan HTML kartu detail yang berubah karena transaksi.
+
+    Setelah transaksi sukses, halaman detail tidak perlu dimuat ulang hanya
+    untuk melihat status/riwayat baru: JS menukar `outerHTML` tiap kartu
+    dengan versi dari endpoint ini. Template kartunya sama dengan yang dipakai
+    halaman (`partials/batch_*.html`), jadi markup tidak ditulis dua kali.
+
+    Tidak di-cache (`no-store`) karena endpoint ini memang dipanggil tepat
+    setelah state chain berubah.
+    """
+    batch = chain.batch_detail(token_id)
+    if batch is None:
+        return JSONResponse({"error": "Batch tidak ditemukan."}, status_code=404)
+
+    consent = chain.consent_of(token_id, batch["doctor"])
+    panels = {
+        key: _render_partial(name, batch=batch, consent=consent)
+        for key, name in _PANEL_TEMPLATES.items()
+    }
+
+    return JSONResponse(
+        {"status": view.status_label(batch["status"]), "panels": panels},
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.get("/api/demo")

@@ -1,0 +1,24 @@
+{#
+  Kartu "Data medis". Dipakai halaman detail dan `/api/batch/{id}/panels`:
+  setelah dokter menyimpan tindakan/obat, isi kartu ini yang paling sering
+  berubah.
+#}
+<section class="card" id="batch-medical">
+  <div class="card-header">
+    <h2 class="card-title">Data medis</h2>
+  </div>
+  <div class="card-body">
+    <dl class="def-list">
+      <dt>Keluhan</dt>
+      <dd><p class="text-block">{{ batch.complaint or '—' }}</p></dd>
+      <dt>Tindakan</dt>
+      <dd><p class="text-block">{{ batch.treatment or '—' }}</p></dd>
+      <dt>Obat</dt>
+      <dd><p class="text-block">{{ batch.medicine or '—' }}</p></dd>
+    </dl>
+    <p class="hint" style="margin: 14px 0 0">
+      Data ini tersimpan plaintext di chain lokal. Izin dokter mengatur hak
+      <strong>menulis</strong>, bukan kerahasiaan baca.
+    </p>
+  </div>
+</section>

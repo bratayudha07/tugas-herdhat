@@ -1,0 +1,18 @@
+{% from "partials/bits.html" import stepper %}
+{#
+  Kartu "Progres status". Dipakai dua tempat: halaman detail
+  (`batch_detail.html`) dan endpoint `/api/batch/{id}/panels` yang menukar
+  isinya setelah transaksi sukses. Markup-nya sengaja tidak ditulis dua kali.
+#}
+<section class="card" id="batch-progress">
+  <div class="card-header">
+    <h2 class="card-title">Progres status</h2>
+  </div>
+  <div class="card-body">
+    {{ stepper(batch.status) }}
+    <p class="hint" style="margin: 14px 0 0">
+      Status hanya bisa maju satu tahap per transaksi, dan berhenti permanen
+      di <span class="mono">COMPLETED</span>.
+    </p>
+  </div>
+</section>

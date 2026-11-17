@@ -238,7 +238,12 @@
 
       /** Muat ulang halaman penuh — dipakai panel sukses di beberapa halaman. */
       refreshPage() {
-        window.location.reload();
+        // `?refresh=1` membuat server membuang cache bacaan chain, jadi
+        // reload tidak menampilkan data lama (di hosting, TTL-nya 60 detik
+        // dan cache itu hidup di memori proses — bukan cache browser).
+        const url = new URL(window.location.href);
+        url.searchParams.set("refresh", "1");
+        window.location.assign(url.toString());
       },
 
       // Kirim ulang transaksi yang sudah disiapkan (mis. setelah user menolak
@@ -491,10 +496,43 @@
           });
         },
 
+        /**
+         * Tukar kartu yang dirender server (progres, data medis, penugasan,
+         * riwayat) dengan versi baru setelah transaksi sukses.
+         *
+         * Tanpa ini pengguna melihat panel yang "tidak bergerak" padahal
+         * transaksinya sudah masuk blok — persis yang bikin tombol "Majukan"
+         * ditekan berkali-kali. Satu request tambahan, hanya sekali per
+         * transaksi; tidak ada polling.
+         */
+        async refreshPanels() {
+          // Kegagalan di sini tidak boleh merusak panel sukses: kalau request
+          // gagal, halaman tetap menampilkan tombol "Muat ulang halaman".
+          try {
+            const response = await getJSON(`/api/batch/${this.tokenId}/panels`);
+            if (!response.ok) return;
+
+            const panels = response.data.panels || {};
+            for (const [id, html] of Object.entries(panels)) {
+              const node = document.getElementById(id);
+              if (node) node.outerHTML = html;
+            }
+
+            const badge = document.querySelector("#batch-status-badge .badge");
+            if (badge && response.data.status) {
+              badge.textContent = response.data.status;
+              badge.dataset.status = response.data.status;
+            }
+          } catch (error) {
+            // Diam saja: data lama masih tampil, dan pengguna bisa memuat ulang.
+          }
+        },
+
         async onTxSuccess() {
           // Server sudah membuang cache bacaan setelah receipt sukses, jadi
           // konteks baru di sini mencerminkan status/izin setelah transaksi.
           await this.loadContext();
+          await this.refreshPanels();
         },
       }),
     );

@@ -151,6 +151,12 @@ Variabel lingkungan yang dibaca aplikasi:
 | `EHR_CACHE_TTL` | `15` | umur cache pembacaan chain (detik) |
 | `EHR_RPC_TIMEOUT` | `3` | timeout per request RPC (detik) |
 
+Setelah transaksi sukses, halaman detail memperbarui kartu progres/data
+medis/penugasan/riwayat lewat `GET /api/batch/{id}/panels` tanpa memuat ulang
+halaman. Tombol "Muat ulang halaman" di dialog sukses menambahkan `?refresh=1`
+supaya cache bacaan di server (termasuk TTL 60 detik saat hosting) ikut
+dibuang.
+
 ### Deploy online (Vercel + Sepolia)
 
 GitHub Pages **tidak cukup** untuk aplikasi ini: halaman dirender Jinja2 dan
@@ -226,6 +232,7 @@ Catatan penting untuk hosting:
 | `GET /api/access?address=0x…` | tabel izin per batch sesuai peran (+ tabel akun demo untuk admin) |
 | `GET /api/demo` | akun demo testnet: peran, saldo, dan private key yang sengaja dibagikan |
 | `GET /api/batch/{id}/context?address=0x…` | hak tulis satu wallet pada batch (dasar tombol di halaman detail) |
+| `GET /api/batch/{id}/panels` | potongan HTML kartu progres/data medis/penugasan/riwayat — ditukar setelah transaksi sukses supaya halaman tidak perlu dimuat ulang |
 | `POST /api/tx/build` | validasi + dry-run + calldata siap tanda tangan |
 | `GET /api/tx/{hash}` | status receipt: `pending` / `success` / `failed` |
 | `GET /api/docs` | dokumentasi otomatis FastAPI |

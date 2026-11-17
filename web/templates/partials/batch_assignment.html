@@ -1,0 +1,38 @@
+{#
+  Kartu "NFT & penugasan". Ikut ditukar setelah transaksi karena
+  `assignDoctor` mengubah dokter penanggung jawab dan mencabut izin dokter
+  lama, sementara `setConsent` mengubah status izin.
+#}
+<section class="card" id="batch-assignment">
+  <div class="card-header">
+    <h2 class="card-title">NFT &amp; penugasan</h2>
+  </div>
+  <div class="card-body">
+    <dl class="def-list">
+      <dt>Token</dt>
+      <dd class="mono">#{{ batch.tokenId }} · ERC-721 soulbound</dd>
+      <dt>Pemilik</dt>
+      <dd class="mono" title="{{ batch.patient }}">{{ batch.patient }}</dd>
+      <dt>Dokter</dt>
+      <dd class="mono" title="{{ batch.doctor }}">{{ batch.doctor }}</dd>
+      <dt>Izin dokter</dt>
+      <dd>
+        {% if consent %}
+        <span class="chip" data-state="ok">
+          <span class="dot" aria-hidden="true"></span> Aktif
+        </span>
+        {% elif consent is none %}
+        <span class="hint">Tidak terbaca dari chain</span>
+        {% else %}
+        <span class="chip" data-state="warn">
+          <span class="dot" aria-hidden="true"></span> Belum ada
+        </span>
+        {% endif %}
+      </dd>
+      <dt>Dibuat oleh</dt>
+      <dd class="mono" title="{{ batch.createdBy }}">{{ batch.createdBy }}</dd>
+      <dt>Dibuat</dt>
+      <dd>{{ batch.createdAt | fmt_datetime }}</dd>
+    </dl>
+  </div>
+</section>

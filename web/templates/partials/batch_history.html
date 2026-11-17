@@ -1,0 +1,47 @@
+{#
+  Kartu "Riwayat" — daftar `getHistory()`, terbaru di atas. Dipakai halaman
+  detail dan `/api/batch/{id}/panels` supaya entri baru (mis. STATUS_UPDATED)
+  langsung muncul tanpa memuat ulang halaman.
+#}
+<section class="card" id="batch-history">
+  <div class="card-header">
+    <div>
+      <h2 class="card-title">Riwayat</h2>
+      <p class="hint" style="margin: 2px 0 0">
+        Dari <span class="mono">getHistory()</span>, terbaru di atas.
+      </p>
+    </div>
+  </div>
+  {% if batch.history %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th scope="col">Waktu</th>
+          <th scope="col">Aksi</th>
+          <th scope="col">Oleh</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in batch.history %}
+        <tr>
+          <td>{{ entry.timestamp | fmt_datetime }}</td>
+          <td>
+            {{ entry.action | history_label }}
+            <span class="mono history-raw">{{ entry.action }}</span>
+          </td>
+          <td class="mono" title="{{ entry.actor }}">
+            {{ entry.actor | short_addr }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <strong>Belum ada riwayat</strong>
+    <span>Riwayat terisi sejak batch dibuat.</span>
+  </div>
+  {% endif %}
+</section>
