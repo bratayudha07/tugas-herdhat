@@ -1,0 +1,26 @@
+{
+  "contract": "EHRTraceability",
+  "network": "sepolia",
+  "address": "0xebA349a5DaDa16De281634B1d92Fa5aDb207D3F7",
+  "chainId": 11155111,
+  "demoAccounts": {
+    "admin": "0x85C9e46183189a1f18961F5CB27BCf48F2FB1B70",
+    "receptionist": "0x6C0390DA4317Fc964E23E9a381a3F074De03a050",
+    "doctor": "0x5205b00B6935a7050B0AEAb482D51C94c3c069cB",
+    "doctor2": "0x0BD17A66d0f2908dE1f6c5E997FE44a8B705E8F7",
+    "patient": "0x4F45a66C82C9f00DD3c2AcC073a977e1DE94303A",
+    "patient2": "0xF620B897e1b47c155Ea0cf0Dfb2b3b67d73a228F",
+    "patient3": "0xDf4Ff223fad99f4Ac251d19877C1dDa373b04607",
+    "patient4": "0x29D4a86f8782E8a8AB459C0344F67f814D4A62DD"
+  },
+  "demoKeys": {
+    "admin": "0x20f151581a446273be608c5059d411ee0044e7d7c3bd010da17c500503034da0",
+    "receptionist": "0x05847540c4b77dcedd5af2dcdde0b7dd7b0c33315edbfcef7eb171fee0efcfd1",
+    "doctor": "0xccb06cb8320676a78c99236c88bf8412e9312f235f928d624989fb01b8a83b16",
+    "doctor2": "0xf9a3665e00951a20d1ce7bd71118240e027a1a76e4a6d2e33d10fd302b659286",
+    "patient": "0x11c9c6b1777c391c24422abd5bb05c78eb3b395bb304ea1c63ebe055544d3f56",
+    "patient2": "0x6c9651c23d20ea75a4fd37cd7ec0f54ce3ac112b581f98dda8519690414a333e",
+    "patient3": "0xd19c2773ede731bb7c51850bf581fa8cb098a4315977f72adc17f813ebd9b71a",
+    "patient4": "0x426fff49e23905a0ddee60d160dff119788a66c37bd90fb2a8a7cd4366f48f19"
+  }
+}

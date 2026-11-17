@@ -261,6 +261,10 @@
         </div>
       </div>
 
+      <p class="hint table-scroll-hint" style="padding: 0">
+        Geser tabel ke samping untuk melihat kolom saldo dan private key.
+      </p>
+
       <div class="table-wrap">
         <table class="data-table">
           <thead>
@@ -321,7 +325,13 @@
 
       <p class="hint" style="margin: 0" x-show="faucetUrl()">
         Faucet:
-        <a :href="faucetUrl()" target="_blank" rel="noreferrer noopener" x-text="faucetUrl()"></a>
+        <a
+          class="address-full"
+          :href="faucetUrl()"
+          target="_blank"
+          rel="noreferrer noopener"
+          x-text="faucetUrl()"
+        ></a>
       </p>
     </div>
   </section>

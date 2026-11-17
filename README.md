@@ -171,6 +171,16 @@ npm run deploy:sepolia
 npm run seed:sepolia
 ```
 
+Kontrak yang sekarang dipakai demo: `0xebA349a5DaDa16De281634B1d92Fa5aDb207D3F7`
+(Sepolia, chain id `11155111`). Alamat ini ada di `deployment.sepolia.json`
+yang ikut ter-commit supaya Vercel bisa membacanya.
+
+`seed:sepolia` boleh diulang kalau putus di tengah jalan: skrip mencocokkan
+batch lewat `patientId`, melewati langkah yang sudah tercatat on-chain
+(consent, treatment, status), dan menunggu kontrak selesai membaca tulisannya
+sendiri sebelum lanjut. Tidak ada data yang terduplikasi saat dijalankan dua
+kali.
+
 Hasilnya: `deployment.sepolia.json` berisi alamat kontrak, peran, dan
 **private key akun demo** — kunci itu memang ditampilkan di halaman Wallet
 supaya pengunjung bisa mengimpor akun ke MetaMask dan mencoba tombol tulis.
@@ -184,9 +194,17 @@ set environment variable:
 
 | Variabel | Nilai |
 |---|---|
-| `EHR_RPC_URL` | RPC Sepolia ber-API-key (Alchemy/Infura). Endpoint publik tanpa key bisa, tapi dipakai bersama dan mudah kena `429` |
+| `EHR_RPC_URL` | `https://ethereum-sepolia-rpc.publicnode.com` (tanpa API key, cukup untuk demo) atau endpoint Alchemy/Infura gratis kalau ingin lebih stabil |
 | `EHR_DEPLOYMENT_PATH` | `deployment.sepolia.json` |
-| `EHR_CACHE_TTL` | `30` (opsional; serverless tanpa cache persisten) |
+| `EHR_CACHE_TTL` | `60` (opsional; serverless tanpa cache persisten) |
+
+Soal RPC publik: dari pengujian, hanya `ethereum-sepolia-rpc.publicnode.com`
+dan `sepolia.gateway.tenderly.co` yang melayani `eth_call` tanpa API key.
+Endpoint populer lain (`rpc.ankr.com` butuh key, `1rpc.io`, `rpc2.sepolia.org`
+balas `403`, `onfinality` balas `429`). publicnode dipakai sebagai default
+karena paling konsisten; kalau demo dipakai rame-rame, ganti ke API key
+Alchemy gratis supaya tidak rebutan kuota. Aplikasi sudah memasang retry
+(2x, backoff 0,4 s) untuk gangguan koneksi sesaat.
 
 Catatan penting untuk hosting:
 
@@ -194,7 +212,9 @@ Catatan penting untuk hosting:
   Setelah kontrak berubah, jalankan `npx hardhat compile && npm run abi`.
 - Server tidak menulis file apa pun, jadi filesystem read-only Vercel aman.
 - Cache pembacaan chain ada di memori proses; instance baru mulai dingin.
-  Dengan 4 batch, satu halaman tetap terasa cepat (~1 detik setelah warm).
+  Dengan 4 batch, halaman pertama di RPC publik terukur ~1–2 detik, lalu
+  ~10 ms setelah cache terisi. Pembacaan banyak item (saldo, peran, consent,
+  batch) dikirim sebagai satu batch request, bukan satu request per item.
 
 ### Endpoint API internal
 
