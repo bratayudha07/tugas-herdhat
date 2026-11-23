@@ -10,9 +10,9 @@ Aplikasi rekam medis pasien berbasis blockchain. Setiap batch rekam medis disimp
 
 | Nama | NIM |
 |---|---|
-| Hafidzar Ashyawal Sinatryas | _(isi NIM)_ |
-| Haidar | _(isi NIM)_ |
-| Robbi Hamdi | _(isi NIM)_ |
+| Hafidzar Ashyawal Sinatryas | 2530801075 |
+| Haidar | 2530801079 |
+| Robbi Hamdi | 2530801057 |
 
 ## Cara Menjalankan
 
